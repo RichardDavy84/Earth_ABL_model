@@ -19,8 +19,9 @@ c  zm(j)-  mean varable nodes coordinates (u, v, t, q & qi)            *
 c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
-      SUBROUTINE Initialize_NeXtSIM_ABL(albedo,ug,vg,slon,semis,rlat,z0,taur,p0,q0,t0,
-               Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar) 
+      SUBROUTINE Initialize_NeXtSIM_ABL(albedo,ug,vg,slon,semis,rlat,z0,
+     & taur,p0,q0,t0,
+     & Nj,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar)
 
 C-------------! Inputs needed from NeXtSIM / ERA5 are:
 C.  albedo - Surface albedo
@@ -36,20 +37,21 @@ C.    q0   - Initial surface specific humidity [kg/kg]
 C.    t0   - Initial 2m air temperature [K]
 C----------! Outputs are the initial values for mean and turbulent quantities, and the grid structures used to define them 
 C 
-C.  nj,nv,dedzm,dedzt,zm,zt,	u,v,t,q,qi,	e,ep,uw,vw,wt,wq,wqi,km,kh,ustar 
+C.  nj,dedzm,dedzt,zm,zt,	u,v,t,q,qi,	e,ep,uw,vw,wt,wq,wqi,km,kh,ustar
 C-------------------------------------------------------------
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir
-      PARAMETER(nj=121,nv=6,nw=0,ir=121) 
+C     PARAMETER(nj=121,nv=6,nw=0,ir=121)
+      PARAMETER(nv=6,nw=0,ir=121)
       REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,vk,zero
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
+      COMMON /constc/z0c,zref,ztop,eta1,deta,rlb
       REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,tstar,qstar,qistar
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv),psi(nj,nv)
       REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)
@@ -93,8 +95,6 @@ c---------0,
       REAL cp,latent,rgas,tgamma,s00,sbc
       DATA cp,latent,rgas,tgamma,s00,sbc
      1    /1010.,2.50e6,287.,.007,1373,5.67e-8/     
-
-      DATA qi(1)/0./ ! Initialise without any ice in the atmosphere
 
 c---------Integer variables used for the do-loops
       INTEGER jd,jh,jm,nds,nhrs,nmts,j10,jmout,jd10
@@ -174,8 +174,8 @@ c---------Calculating initial profiles
      1      tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,nj)
           wlo=-vk*betag*wt(1)/ustar**3
 c
-          dzeta=alog(.2/z0+1.)/(ni-1.)
-        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
+c         dzeta=alog(.2/z0+1.)/(ni-1.)
+c       call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')
@@ -190,9 +190,9 @@ c---------Output initial data and profiles
         open(12,file='TURB-INI.dat')
           call turbout(zm,zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,nj,12)
         close(12)
-      open(11,file='TSOILINI.dat')
-        call stempout(tsoil,zsoil,ni,11)
-      close(11)
+c     open(11,file='TSOILINI.dat')
+c       call stempout(tsoil,zsoil,ni,11)
+c     close(11)
 
 
 

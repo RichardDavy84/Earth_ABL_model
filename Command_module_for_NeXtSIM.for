@@ -19,8 +19,9 @@ c  zm(j)-  mean varable nodes coordinates (u, v, t, q & qi)            *
 c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
-      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,ug,vg,slon,semis,rlat,z0,taur,p0,ds,ha,jd,
-                  nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar) 
+      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,ug,vg,slon,semis,rlat,z0,
+     & taur,p0,ds,ha,jd,
+     & nj,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar)
  
 C-------------! Inputs needed from NeXtSIM are:
 C.  albedo - Surface albedo
@@ -36,20 +37,21 @@ C.    ds   - Length of time step [s]
 C     ha   - Hour angle in radians (See commented-out calculation of this below)
 C.    jd   - Julian day - this is used to calculate the TOA solar radiation
 C------------------------------------------------------------
-C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
+C + nj,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir
-      PARAMETER(nj=121,nv=6,nw=0,ir=121)
+C     PARAMETER(nj=121,nv=6,nw=0,ir=121)
+      PARAMETER(nv=6,nw=0,ir=121)
       REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      COMMON /consta/alpha,betag,fc,grav,rl0,tg,vk,zero
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
+      COMMON /constc/z0c,zref,ztop,eta1,deta,rlb
       REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,tstar,qstar,qistar
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv),psi(nj,nv)
       REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)
@@ -97,7 +99,7 @@ c---------Specifying some atmospheric constants
      1    /1010.,2.50e6,287.,.007,1373,5.67e-8/        
    
 c--------- Data on celestial dynamics
-      REAL daysec,hoursec
+      REAL nhrs,daysec,hoursec
       DATA nhrs,daysec/24,86165./   
       REAL jd ! Julian day - this is input
 c---------Some variables used in surface energy balance calculations
@@ -291,9 +293,9 @@ c                ssz2=wt(j)
  202    CONTINUE
 
 c++++++++++++++Calculating soil temperature
-        CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
-        t(1)=tsoil(1)
-        betag=grav/t(1)
+c       CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
+c       t(1)=tsoil(1)
+c       betag=grav/t(1)
 
 c++++++++++++++ Calculating dust dynamics
 c      CALL Dust(ir,nj,ustar,zm,ttd,tvis,Conc1,Km,t,taur

@@ -19,8 +19,9 @@ c  zm(j)-  mean varable nodes coordinates (u, v, t, q & qi)            *
 c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
-      SUBROUTINE Initialize_NeXtSIM_ABL(albedo,ug,vg,slon,semis,rlat,z0,taur,p0,q0,t0,
-               Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar) 
+      SUBROUTINE Initialize_NeXtSIM_ABL(albedo,u_in,v_in,slon,semis,
+     1    rlat,z0_in,taur,p0,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
+     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in) 
 
 C-------------! Inputs needed from NeXtSIM / ERA5 are:
 C.  albedo - Surface albedo
@@ -41,7 +42,7 @@ C-------------------------------------------------------------
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir
-      PARAMETER(nj=121,nv=6,nw=0,ir=121) 
+      PARAMETER(nw=0,ir=121) 
       REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
       COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
       REAL betam,betah,gammam,gammah,pr
@@ -94,8 +95,6 @@ c---------0,
       DATA cp,latent,rgas,tgamma,s00,sbc
      1    /1010.,2.50e6,287.,.007,1373,5.67e-8/     
 
-      DATA qi(1)/0./ ! Initialise without any ice in the atmosphere
-
 c---------Integer variables used for the do-loops
       INTEGER jd,jh,jm,nds,nhrs,nmts,j10,jmout,jd10
       REAL daysec,hoursec
@@ -103,12 +102,23 @@ c---------Integer variables used for the do-loops
 c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
+
+      REAL*8 u_in,v_in,ustar_in,z0_in,ds_in
+
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
 c===================Set constants
+      qi(1) = 0. ! Initialise without any ice in the atmosphere
+
       p(1)=p0       ! Initialise some surface values using inputs
       q(1)=q0
       t(1)=t0
+
+      ug = u_in
+      vg = v_in
+      ustar = ustar_in
+      z0_in = z0_in
+      ds_in = ds_in
                 
       grav=9.807    ! Some more general constants 
       vk=.4         ! von Karman constant
@@ -174,8 +184,8 @@ c---------Calculating initial profiles
      1      tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,nj)
           wlo=-vk*betag*wt(1)/ustar**3
 c
-          dzeta=alog(.2/z0+1.)/(ni-1.)
-        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
+c          dzeta=alog(.2/z0+1.)/(ni-1.)
+c        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')
@@ -190,9 +200,9 @@ c---------Output initial data and profiles
         open(12,file='TURB-INI.dat')
           call turbout(zm,zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,nj,12)
         close(12)
-      open(11,file='TSOILINI.dat')
-        call stempout(tsoil,zsoil,ni,11)
-      close(11)
+c      open(11,file='TSOILINI.dat')
+c        call stempout(tsoil,zsoil,ni,11)
+c      close(11)
 
 
 

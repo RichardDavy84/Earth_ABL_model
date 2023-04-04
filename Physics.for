@@ -26,7 +26,7 @@ c---------Vaporize fog if it exists during subsaturation:
         endif
 c      IF(qi(j).gt.0.) then
 c        WRITE(6,'(1x,"j,q,qs,dq,qi:",i4,4e13.6)') j,q(j),qsat,dq,qi(j)
-c        pause
+c        stop
 c      ENDIF
  100  continue
 c
@@ -108,13 +108,13 @@ c=======================================================================
       INTEGER j
       REAL bet,gam(NMAX)
 c
-      if(b(1).eq.0.) pause 'tridag: rewrite equations'
+      if(b(1).eq.0.) stop 'tridag: rewrite equations'
         bet=b(1)
         u(1)=r(1)/bet
       do 10 j=2,n
         gam(j)=c(j-1)/bet
         bet=b(j)-a(j)*gam(j)
-          if(bet.eq.0.) pause 'tridag failed'
+          if(bet.eq.0.) stop 'tridag failed'
         u(j)=(r(j)-a(j)*u(j-1))/bet
  10   continue
       do 20 j=n-1,1,-1
@@ -540,7 +540,7 @@ c     2            15x," tstar1, 0 : ",2e16.8,/,
 c     3            15x,"   rlo1, 0 : ",2e16.8,/,
 c     4            15x,"     usdif : ",2e16.8)')
 c     5    j,ustar1,ustar,tstar1,tstar,wlo1,wlo,usdif
-c        pause
+c        stop
         IF(usdif.lt.eps) GOTO 99
       end do
       WRITE(6,'(10x,"Warning: No convergent solution was found for u* af
@@ -550,7 +550,7 @@ c        pause
      2            15x,"   rlo1, 0 : ",2e16.8,/,
      3            15x,"     usdif : ",2e16.8)')
      4    ustar1,ustar,tstar1,tstar,wlo1,wlo,usdif
-        pause
+        stop
  99   CONTINUE
 c---------b) eddy diffusivities kh, km, uw, vw, wt, wq and wqi
           j=1
@@ -741,7 +741,7 @@ c
       if((fl.gt.0..and.fh.gt.0.).or.(fl.lt.0..and.fh.lt.0.)) then
         write(6,*) '             root must be bracketed in rtsafe ... '
         write(6,*) ' x1,x2,fl,fh = ',x1,x2,fl,fh
-	pause
+	stop
       endif
       if(fl.eq.0.)then
         rtsafe=x1
@@ -1313,15 +1313,19 @@ c **********************************************************************
 c
         im1=max0(i-1,1)
 c ------------ calculate recursion coeficient beta
-      do 10 m=1,nv
-      do 10 n=1,nv
-      do 10 l=1,nv
+      do m=1,nv
+      do n=1,nv
+      do l=1,nv
         b(m,n)=b(m,n)+a(m,l)*alfa(im1,l,n)
- 10   continue
-      do 15 m=1,nv
-      do 15 l=1,nv
+      enddo
+      enddo
+      enddo
+
+      do m=1,nv
+      do l=1,nv
         d(m)=d(m)-a(m,l)*beta(im1,l)
- 15   continue
+      enddo
+      enddo
         ijob=0
           call solver(b,nv,nv,d,1,nv,ijob,wa,ipvt,ier)
       do 20 m=1,nv
@@ -1331,10 +1335,11 @@ c ------------ calculate recursion coeficient alfa
         if(i.eq.ni) return
           ijob=2
         call solver(b,nv,nv,c,nv,nv,ijob,wa,ipvt,ier)
-      do 25 m=1,nv
-      do 25 n=1,nv
+      do m=1,nv
+      do n=1,nv
         alfa(i,m,n)=-c(m,n)
- 25   continue
+      enddo
+      enddo
 c
       return
       END

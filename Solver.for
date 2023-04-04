@@ -60,10 +60,11 @@ c ------------ find equilibration factors
       do 20 i=1,n
         wa(i)=zero
  20   continue
-      do 25 j=1,n
-      do 25 i=1,n
+      do j=1,n
+      do i=1,n
         wa(i)=amax1(abs(a(i,j)),wa(i))
- 25   continue
+      enddo
+      enddo
 c ------------ calculate l and u factors
       do 100 j=1,nm1
         jp1=j+1
@@ -85,7 +86,7 @@ c ............ find pivot index
 c ............ singular matrix if pivot equals zero
           if(pvt.eq.zero) then
       WRITE(6,'(1x,"j,i,n,a(i,j):",3i2,6e14.6)') j,i,n,(a(i,i),i=1,6)
-      pause
+      stop
 	    info=-2
 	    goto 1000
 	  endif
@@ -195,16 +196,19 @@ c **********************************************************************
       REAL alfa(ni,nv,nv),beta(ni,nv),psi(ni,nv)
       INTEGER i,l,m,nim1
 c
-      do 40 i=1,ni
-      do 40 m=1,nv
+      do i=1,ni
+      do m=1,nv
         psi(i,m)=beta(i,m)
- 40   continue
+      enddo
+      enddo
         nim1=ni-1
-      do 50 i=nim1,1,-1
-      do 50 m=1,nv
-      do 50 l=1,nv
+      do i=nim1,1,-1
+      do m=1,nv
+      do l=1,nv
          psi(i,m)=psi(i,m)+alfa(i,m,l)*psi(i+1,l)
- 50   continue
+      enddo
+      enddo
+      enddo
 c
       return
       end

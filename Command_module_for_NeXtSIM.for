@@ -19,8 +19,9 @@ c  zm(j)-  mean varable nodes coordinates (u, v, t, q & qi)            *
 c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
-      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t850,ug,vg,lw,sw,slon,semis,rlat,z0,taur,p0,ds,ha,jd,
-                  nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar) 
+      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t850,u_in,v_in,lw,sw,slon,
+     1    semis,rlat,z0_in,taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
+     1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in) 
  
 C-------------! Inputs needed from NeXtSIM are:
 C.  albedo - Surface albedo
@@ -44,7 +45,7 @@ C------------------------------------------------------------
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir
-      PARAMETER(nj=121,nv=6,nw=0,ir=121)
+      PARAMETER(nw=0,ir=121)
       REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
       COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
       REAL betam,betah,gammam,gammah,pr
@@ -83,6 +84,8 @@ C------------------------------------------------------------
       REAL*8 tice(nj)
 
       REAL*8 albedo,rlat,slon,semis,t850,height_t850
+      INTEGER Location
+      REAL*8 u_in,v_in,ustar_in,z0_in,ds_in
 
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
@@ -100,7 +103,7 @@ c---------Specifying some atmospheric constants
      1    /1010.,2.50e6,287.,.007,1373,5.67e-8/        
    
 c--------- Data on celestial dynamics
-      REAL daysec,hoursec
+      REAL nhrs,daysec,hoursec
       DATA nhrs,daysec/24,86165./   
       REAL jd ! Julian day - this is input
 c---------Some variables used in surface energy balance calculations
@@ -110,6 +113,12 @@ c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
 c===================Set constants
       p0=p(1)                        ! Surface pressure for dust component
+
+      ug = u_in
+      vg = v_in
+      ustar = ustar_in
+      z0_in = z0_in
+      ds_in = ds_in
 
       grav=9.807
       vk=.4
@@ -127,8 +136,8 @@ c===================Set constants
       fc=2.*angv*SIN(rlat*rpi)
 
 c================== Nudge towards temperature and winds at 850 hPa
-       height_t850=(((850/p0)^(1/5.257)-1)*(t850))/0.0065     ! Use hypsometric formula to convert T850 to temperature at the nearest height level
-       Location = minloc(abs(zm-height_t850))                 ! Find the nearest height level that matches
+       height_t850=(((850/p0)**(1/5.257)-1)*(t850))/0.0065     ! Use hypsometric formula to convert T850 to temperature at the nearest height level
+       Location = minloc(abs(zm-height_t850),1)                 ! Find the nearest height level that matches
        t(Location) = t(Location) + (1/5)*(t850 - t(Location)) ! Nudge towards ERA5 temperature data
        u(Location) = u(Location) + (1/5)*(ug - u(Location))   ! Nudge towards ERA5 U_850 data
        v(Location) = v(Location) + (1/5)*(vg - v(Location))   ! Nudge towards ERA5 V_850 data 
@@ -163,15 +172,20 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 
 c---------Initialization array used in solving matrix
-      do 80 l=1,nv
-      do 80 j=1,nv
-      do 80 i=1,nj
+      do l=1,nv
+      do j=1,nv
+      do i=1,nj
         alfa(i,j,l)=zero
- 80   continue
-      do 90 l=1,nv
-      do 90 i=1,nj
+      enddo
+      enddo
+      enddo
+
+      do l=1,nv
+      do i=1,nj
         beta(i,l)=zero
- 90   continue
+      enddo
+      enddo
+
         tg=theta(nj)
 
 c---------Calculating Boundary-Layer Height
@@ -300,10 +314,10 @@ c                ssz2=wt(j)
             enddo
  202    CONTINUE
 
-c++++++++++++++Calculating soil temperature
-        CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
-        t(1)=tsoil(1)
-        betag=grav/t(1)
+cc++++++++++++++Calculating soil temperature
+c        CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
+c        t(1)=tsoil(1)
+c        betag=grav/t(1)
 
 c++++++++++++++ Calculating dust dynamics
 c      CALL Dust(ir,nj,ustar,zm,ttd,tvis,Conc1,Km,t,taur

@@ -9,7 +9,7 @@ IOTEST = iotest.x
 OBJ_DIR = .obj
 
 FFLAGS += -std=legacy
-LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio
+LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -I $(OBJ_DIR)
 
 # The source files for modules
 SRC = mod_io.f90
@@ -24,11 +24,11 @@ $(ABL): ABL.f90 $(OBJ) $(O77)
 
 $(OBJ): $(OBJ_DIR)/%.o : %.f90
 	@mkdir -p $(OBJ_DIR)
-	$(FC) -c $(F90FLAGS) $< -o $@
+	$(FC) -c $(F90FLAGS) $< -o $@ $(MODFLAG) $(OBJ_DIR)
 
 $(O77): $(OBJ_DIR)/%.o : %.for
 	@mkdir -p $(OBJ_DIR)
-	$(FC) -c $(FFLAGS) $< -o $@
+	$(FC) -c $(FFLAGS) $< -o $@ $(MODFLAG) $(OBJ_DIR)
 
 $(IOTEST): iotest.for $(OBJ)
 	$(FC) $(FFLAGS) $(LDFLAGS) $^ -o $@

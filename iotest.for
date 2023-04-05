@@ -12,7 +12,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         IMPLICIT NONE
 
         CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
-        INTEGER :: mgr, ngr, i, j
+        INTEGER :: mgr, ngr, i, j, k
         REAL, ALLOCATABLE, DIMENSION(:,:) :: rlat, rlon, output2D
         REAL, ALLOCATABLE, DIMENSION(:,:,:) :: output3D
         INTEGER, ALLOCATABLE, DIMENSION(:,:) :: mask
@@ -123,6 +123,19 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           enddo
         enddo
         call interp_out%append_var("msl", output2D)
+
+! One more time ...
+        do k=1, 125
+          time = time + timedelta(hours=1)
+          call mslp%read_input(time)
+          call interp_out%append_time(time)
+          do i = 1, mgr
+            do j = 1, ngr
+              output2D(i,j) = mask(i,j) * mslp%get_point(i,j)
+            enddo
+          enddo
+          call interp_out%append_var("msl", output2D)
+        enddo
 
       END PROGRAM test_io
 

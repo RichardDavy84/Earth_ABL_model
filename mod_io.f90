@@ -25,8 +25,9 @@ module io
     integer, private, dimension(:,:), allocatable :: a_lon, b_lon, a_lat, b_lat
     real, private, dimension(:,:), allocatable :: data2D, r, s
     character(len=short_string), private :: vname
+    character(len=long_string), private :: dirname
 
-    character(len=long_string), private :: fname_format = "data/ERA5_${var}_y%Y.nc"
+    character(len=long_string), private :: fname_format = "${dir}/ERA5_${var}_y%Y.nc"
     character(len=9), private :: lon_name = "longitude"
     character(len=8), private :: lat_name = "latitude"
 
@@ -153,12 +154,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
 !   - TODO: Add the third dimension
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine init_input_var(self, varname, lon, lat, time)
+  subroutine init_input_var(self, varname, dirname, lon, lat, time)
 
     implicit none
 
     class(input_var), intent(inout) :: self
-    character(len=*), intent(in) :: varname
+    character(len=*), intent(in) :: varname, dirname
     real, dimension(:,:), allocatable :: lon, lat
     type(datetime), intent(in) :: time
 
@@ -170,8 +171,9 @@ double precision function netCDF_time(self, time_in) result(time_out)
     character(len=short_string), dimension(:), allocatable :: dimnames
     character(len=long_string) :: fname
 
-    ! Save the variable name the object
+    ! Save the variable and directory name in the object
     self%vname = varname
+    self%dirname = dirname
 
     ! Get file name - we can't save it, because it may change with time
     fname = self%get_filename(time)
@@ -314,6 +316,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Replace ${var} with self%vname
     i = index(fname, "${var}")
     fname = fname(1:i-1)//trim(self%vname)//fname(i+6:len(fname))
+
+    ! Replace ${dir} with self%dirname
+    i = index(fname, "${dir}")
+    fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
 
     return
 

@@ -53,6 +53,12 @@ PROGRAM ABL
   PARAMETER(nj=121,nv=6,ni=11)
   ! TODO: Read nj in from namelist
 
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ! Time information
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  type(datetime) :: time, time0, time1
+  type(timedelta) :: dt
+
   ! Variables for the three dimensional model
   ! Grid points of the model are in a 2D array
   ! Everything here's allocatable as we read in the grid description and
@@ -64,6 +70,7 @@ PROGRAM ABL
   INTEGER :: ngr, mgr, igr, jgr
   INTEGER, DIMENSION(:,:), ALLOCATABLE :: mask
   REAL, DIMENSION(:,:), ALLOCATABLE :: rlat, rlon
+  REAL, DIMENSION(nj) :: zm, zt, dedzm, dedzt
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Inputs from forcing files
@@ -74,9 +81,6 @@ PROGRAM ABL
   ! flux; Mean surface downward short-wave radiation flux, surface
   ! pressure, specific humidity at surface, and temperature at surface
   TYPE(input_var) :: sdlw, sdsw, p0, q0, t0
-
-  ! Grid defenitions
-  REAL, DIMENSION(nj) :: zm, zt, dedzm, dedzt
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -91,14 +95,12 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  type(datetime) :: time, time0, time1
-  type(timedelta) :: dt
   type(output_file) :: init_cond, srfv_all, Turb, Met
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n
+  INTEGER :: ds, js, jm, jh, jd, hr_out, mnt_out, m, n
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
   REAL :: slon, nmts, ha
   REAL, PARAMETER :: hoursec = 86165.
@@ -123,7 +125,6 @@ PROGRAM ABL
   print *, "maxval(rlon) = ", maxval(rlon), "minval(rlon) = ", minval(rlon)
   print *, "maxval(rlat) = ", maxval(rlat), "minval(rlat) = ", minval(rlat)
 
-  !===================Allocate arrays
   ! TODO: Time information from namelist
   time0 = datetime(2007,01,01)
   time1 = datetime(2007,01,02)
@@ -132,7 +133,7 @@ PROGRAM ABL
   nmts = hoursec/ds
   time = time0
 
-  ! Prognostic variables (and theta)
+  !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
   ALLOCATE(albedo, semis, z0, taur, mold = ustar)
   ALLOCATE(tld(mgr,ngr,nj))
@@ -141,7 +142,8 @@ PROGRAM ABL
 
   ! Initialise input files and read initial field
   ! example code for p0
-  call p0%init("msl", rlon, rlat, time0)
+  ! TODO: Read directory name (here "data") from namelist
+  call p0%init("msl", "data", rlon, rlat, time0)
   call p0%read_input(time0)
 
   ! Initialise output files
@@ -253,6 +255,7 @@ PROGRAM ABL
   do while ( time <= time1 )
     time = time + dt;
     slon = (time%yearday()/365.2425)*360
+    js = time%getSecond()
     jm = time%getMinute()
     jh = time%getHour()
     ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
@@ -286,43 +289,45 @@ PROGRAM ABL
 
     ! Outputing surface values
 
-    ! surface variable every mnt_out _minutes_
-    IF(MOD(jm,mnt_out).eq.0) then
-      call srfv_all%append_time(time)
-      call srfv_all%append_var("E0", e(:,:,1))
-      call srfv_all%append_var("u*", ustar)
-      call srfv_all%append_var("uw", uw(:,:,1))
-      call srfv_all%append_var("vw", vw(:,:,1))
-      call srfv_all%append_var("wt0", wt(:,:,1))
-      call srfv_all%append_var("km", km(:,:,1))
-      call srfv_all%append_var("kh", kh(:,:,1))
-!        call srfv_all%append_var("1/LO", wlo)
-      call srfv_all%append_var("T0", t(:,:,1))
-!        call srfv_all%append_var("blht", blht)
-    ENDIF
+    IF(js.eq.0) then
+      ! surface variable every mnt_out _minutes_
+      IF(MOD(jm,mnt_out).eq.0) then
+        call srfv_all%append_time(time)
+        call srfv_all%append_var("E0", e(:,:,1))
+        call srfv_all%append_var("u*", ustar)
+        call srfv_all%append_var("uw", uw(:,:,1))
+        call srfv_all%append_var("vw", vw(:,:,1))
+        call srfv_all%append_var("wt0", wt(:,:,1))
+        call srfv_all%append_var("km", km(:,:,1))
+        call srfv_all%append_var("kh", kh(:,:,1))
+  !        call srfv_all%append_var("1/LO", wlo)
+        call srfv_all%append_var("T0", t(:,:,1))
+  !        call srfv_all%append_var("blht", blht)
+      ENDIF
 
-    ! surface variable every hr_out _hours_
-    IF(MOD(jh,hr_out).eq.0) then
-      call Turb%append_time(time)
-      call Turb%append_var("e", e)
-      call Turb%append_var("uw",uw )
-      call Turb%append_var("vw", vw)
-      call Turb%append_var("tld", tld)
-      call Turb%append_var("ep", ep)
-      call Turb%append_var("km", km)
-      call Turb%append_var("kh", kh)
-      call Turb%append_var("wq", wq)
-      call Turb%append_var("wqi", wqi)
-!      call Turb%append_var("rnet", rnet)
-      call Turb%append_var("wt", wt)
+      ! surface variable every hr_out _hours_
+      IF((jm.eq.0) .and. MOD(jh,hr_out).eq.0) then
+        call Turb%append_time(time)
+        call Turb%append_var("e", e)
+        call Turb%append_var("uw",uw )
+        call Turb%append_var("vw", vw)
+        call Turb%append_var("tld", tld)
+        call Turb%append_var("ep", ep)
+        call Turb%append_var("km", km)
+        call Turb%append_var("kh", kh)
+        call Turb%append_var("wq", wq)
+        call Turb%append_var("wqi", wqi)
+  !      call Turb%append_var("rnet", rnet)
+        call Turb%append_var("wt", wt)
 
-      call Met%append_time(time)
-      call Met%append_var("u", u)
-      call Met%append_var("v", v)
-      call Met%append_var("t", t)
-      call Met%append_var("p", p)
-      call Met%append_var("q", q)
-      call Met%append_var("qi", qi)
+        call Met%append_time(time)
+        call Met%append_var("u", u)
+        call Met%append_var("v", v)
+        call Met%append_var("t", t)
+        call Met%append_var("p", p)
+        call Met%append_var("q", q)
+        call Met%append_var("qi", qi)
+      ENDIF
     ENDIF
 
   enddo

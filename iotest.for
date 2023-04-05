@@ -101,7 +101,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 ! Test the loading of data and interpolation
         time = datetime(2007,08,21)
-        call mslp%init("msl", rlon, rlat, time)
+        call mslp%init("msl", "data", rlon, rlat, time)
         call mslp%read_input(time)
 
 ! Write the intrapolation results to file

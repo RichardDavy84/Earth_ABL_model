@@ -100,10 +100,10 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ds, js, jm, jh, jd, hr_out, mnt_out, m, n
+  INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
-  REAL :: slon, nmts, ha
-  REAL, PARAMETER :: hoursec = 86165.
+  REAL :: slon, ha
+  INTEGER, PARAMETER :: hoursec = 86400
   REAL, PARAMETER :: pi=4.*ATAN(1.)
 
 
@@ -131,6 +131,9 @@ PROGRAM ABL
   dt = timedelta(seconds=5)
   ds = dt%getSeconds()
   nmts = hoursec/ds
+  if ( mod(hoursec,ds) .ne. 0 ) then
+    stop "There must be an integer number of time steps in the hour."
+  endif
   time = time0
 
   !===================Allocate arrays
@@ -193,9 +196,9 @@ PROGRAM ABL
       call Initialize_NeXtSIM_ABL( &
         albedo(m,n),                                                    & ! Internal or from coupler?
         u850%get_point(m,n), v850%get_point(m,n),                       & ! From file
-        slon,                                                           &
+        slon,                                                           & ! See above
         semis(m,n),                                                     & ! Internal or from coupler?
-        rlat,                                                           &
+        rlat(m,n),                                                      &
         z0(m,n),                                                        & ! Internal or from coupler?
         taur(m,n),                                                      & ! Internal variable
         p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
@@ -253,60 +256,59 @@ PROGRAM ABL
   ! Time stepping
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   do while ( time <= time1 )
-    time = time + dt;
     slon = (time%yearday()/365.2425)*360
-    js = time%getSecond()
-    jm = time%getMinute()
-    jh = time%getHour()
-    ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
     jd = time%getDay()
+    do jh = 1, 24
+      do jm = 1, nmts
+        time = time + dt;
+        ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
 
-    do m = 1, mgr
-      do n = 1, ngr
+        do m = 1, mgr
+          do n = 1, ngr
 
-        ! Skip the land points
-        if ( mask(m,n) .eq. 0 ) continue
+            ! Skip the land points
+            if ( mask(m,n) .eq. 0 ) continue
 
-        call Integrate_NeXtSIM_ABL( &
-          albedo(m,n),                                                  & ! Internal or from coupler?
-          t850%get_point(m,n), u850%get_point(m,n), v850%get_point(m,n),& ! From file
-          sdlw%get_point(m,n), sdsw%get_point(m,n),                     & ! From file
-          slon,                                                         &
-          semis(m,n),                                                   & ! Internal or from coupler?
-          rlat,                                                         &
-          z0(m,n),                                                      & ! Internal or from coupler?
-          taur(m,n),                                                    & ! Internal variable
-          p0%get_point(m,n),                                            & ! From file
-          ds, ha, jd,                                                   &
-          nj,                                                           & ! Number of vertical grid points
-          nv,                                                           & ! Always 6?
-          dedzm,dedzt,zm,zt,                                            & ! Output grid definitions?
-          u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),            & ! prognostics
-          e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),         & ! prognostics
-          wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n) )       ! prognostics
+            call Integrate_NeXtSIM_ABL( &
+              albedo(m,n),                                                  & ! Internal or from coupler?
+              t850%get_point(m,n), u850%get_point(m,n), v850%get_point(m,n),& ! From file
+              sdlw%get_point(m,n), sdsw%get_point(m,n),                     & ! From file
+              slon,                                                         & ! See above
+              semis(m,n),                                                   & ! Internal or from coupler?
+              rlat(m,n),                                                    &
+              z0(m,n),                                                      & ! Internal or from coupler?
+              taur(m,n),                                                    & ! Internal variable
+              p0%get_point(m,n),                                            & ! From file
+              ds, ha, jd,                                                   &
+              nj,                                                           & ! Number of vertical grid points
+              nv,                                                           & ! Always 6?
+              dedzm,dedzt,zm,zt,                                            & ! Output grid definitions?
+              u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),            & ! prognostics
+              e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),         & ! prognostics
+              wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n) )       ! prognostics
+          enddo
+        enddo
+
+        ! Outputing surface values
+        ! surface variable every mnt_out _minutes_
+        IF(MOD(jm,mnt_out).eq.0) then
+          call srfv_all%append_time(time)
+          call srfv_all%append_var("E0", e(:,:,1))
+          call srfv_all%append_var("u*", ustar)
+          call srfv_all%append_var("uw", uw(:,:,1))
+          call srfv_all%append_var("vw", vw(:,:,1))
+          call srfv_all%append_var("wt0", wt(:,:,1))
+          call srfv_all%append_var("km", km(:,:,1))
+          call srfv_all%append_var("kh", kh(:,:,1))
+    !        call srfv_all%append_var("1/LO", wlo)
+          call srfv_all%append_var("T0", t(:,:,1))
+    !        call srfv_all%append_var("blht", blht)
+        ENDIF
+
       enddo
-    enddo
-
-    ! Outputing surface values
-
-    IF(js.eq.0) then
-      ! surface variable every mnt_out _minutes_
-      IF(MOD(jm,mnt_out).eq.0) then
-        call srfv_all%append_time(time)
-        call srfv_all%append_var("E0", e(:,:,1))
-        call srfv_all%append_var("u*", ustar)
-        call srfv_all%append_var("uw", uw(:,:,1))
-        call srfv_all%append_var("vw", vw(:,:,1))
-        call srfv_all%append_var("wt0", wt(:,:,1))
-        call srfv_all%append_var("km", km(:,:,1))
-        call srfv_all%append_var("kh", kh(:,:,1))
-  !        call srfv_all%append_var("1/LO", wlo)
-        call srfv_all%append_var("T0", t(:,:,1))
-  !        call srfv_all%append_var("blht", blht)
-      ENDIF
 
       ! surface variable every hr_out _hours_
-      IF((jm.eq.0) .and. MOD(jh,hr_out).eq.0) then
+      IF(MOD(jh,hr_out).eq.0) then
         call Turb%append_time(time)
         call Turb%append_var("e", e)
         call Turb%append_var("uw",uw )
@@ -328,8 +330,8 @@ PROGRAM ABL
         call Met%append_var("q", q)
         call Met%append_var("qi", qi)
       ENDIF
-    ENDIF
 
+    enddo
   enddo
 
 END PROGRAM ABL

@@ -20,6 +20,8 @@ module io
 
   ! An input variable (public)
   type :: input_var
+    logical, private :: is_initialised = .false.
+
     integer, private, dimension(:,:), allocatable :: a_lon, b_lon, a_lat, b_lat
     real, private, dimension(:,:), allocatable :: data2D, r, s
     character(len=short_string), private :: vname
@@ -203,6 +205,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Allocate data array
     allocate( self%data2D( size(lat,1), size(lat,2) ) )
 
+    self%is_initialised = .true.
+
   end subroutine init_input_var
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -264,6 +268,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
     class(input_var), intent(in) :: self
     integer, intent(in) :: i, j
     real :: data
+
+    if ( .not. self%is_initialised ) then
+      stop "mod_io: get_point: file object not initialised"
+    endif
 
     ! TODO: Add 3D here
     data = self%data2D(i,j)

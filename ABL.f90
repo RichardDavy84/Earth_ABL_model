@@ -139,9 +139,6 @@ PROGRAM ABL
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
 
-  ! Mask and grid info
-  ALLOCATE(mask(mgr,ngr))
-
   ! Initialise input files and read initial field
   ! example code for p0
   call p0%init("msl", rlon, rlat, time0)

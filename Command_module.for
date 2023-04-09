@@ -25,8 +25,7 @@ c***********************************************************************
       IMPLICIT none
       INTEGER nj,nv,nw,ni,ir
       PARAMETER(nj=241,nv=6,nw=0,ni=11,ir=121)
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb

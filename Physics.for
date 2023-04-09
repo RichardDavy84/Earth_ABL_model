@@ -233,8 +233,7 @@ c             Subroutine FDLAW --- formula of ABL drag law             *
 c======================================================================*
       SUBROUTINE fdlaw(x,f,df)
       IMPLICIT none
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
       COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
       REAL a,b,x,f,df
@@ -275,8 +274,7 @@ c======================================================================*
      1     e(nj),ep(nj),uw(nj),vw(nj),wq(nj),wqi(nj),wt(nj),
      2     kh(nj),km(nj),tl(nj),tld(nj),rnet(nj),dedzt(nj),zm(nj),zt(nj)
       REAL aconst,angle,cp,rgas,rpi,tgamma,fnqs,uin,vin
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
@@ -375,8 +373,7 @@ c======================================================================*
      1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
      2                  nj,nw)
       IMPLICIT none
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
@@ -499,8 +496,7 @@ c======================================================================*
       subroutine subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,
      1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
       IMPLICIT none
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
@@ -609,8 +605,7 @@ c-----------------------------------------------------------------------
       subroutine fusrf(x,fus,dfus)
       IMPLICIT none
       REAL x,fus,dfus
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
       COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
       REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
@@ -868,8 +863,7 @@ c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
       REAL dedzm(nj),p(nj),q(nj),qi(nj),t(nj),u(nj),v(nj)
       REAL dedzt(nj),e(nj),ep(nj),kh(nj),km(nj),tld(nj),uw(nj),vw(nj),
      1     rnet(nj),zm(nj),wa(nv),wlo
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      include "consta.h"
       REAL z0c,z0,zref,ztop,eta1,deta,rlb
       COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
       REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar

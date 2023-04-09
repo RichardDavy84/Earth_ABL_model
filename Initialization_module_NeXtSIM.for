@@ -42,9 +42,10 @@ C-------------------------------------------------------------
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir
-      PARAMETER(nw=0,ir=121) 
-      REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
-      COMMON /consta/alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+      PARAMETER(nw=0,ir=121)
+C TODO: change all common blocks to header files - like I've done for
+C the /consta/ block
+      include "consta.h"
       REAL betam,betah,gammam,gammah,pr
       COMMON /constb/betam,betah,gammam,gammah,pr
       REAL z0c,z0,zref,ztop,eta1,deta,rlb

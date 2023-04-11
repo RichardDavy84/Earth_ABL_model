@@ -43,15 +43,10 @@ C-------------------------------------------------------------
       IMPLICIT none
       INTEGER nj,nv,nw,ir
       PARAMETER(nw=0,ir=121)
-C TODO: change all common blocks to header files - like I've done for
-C the /consta/ block
       include "consta.h"
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      include "constb.h"
+      include "constc.h"
+      include "flxsrf.h"
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv),psi(nj,nv)
       REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)

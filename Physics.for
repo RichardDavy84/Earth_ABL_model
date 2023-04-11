@@ -149,13 +149,12 @@ c======================================================================*
       SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
       IMPLICIT none
       INTEGER nj,nw,j,jm
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
+      include "constc.h"
+      include "cgrid.h"
       REAL dedzm(nj),dedzt(nj),zm(nj),zt(nj),zm0
-      REAL eta,x1,x2,eps,rtsafe
+      REAL x1,x2,eps,rtsafe
       EXTERNAL rtsafe,fgrid
       DATA eps/5.e-6/
-      COMMON /cgrid/eta
 c
       j=1
         zm(j)=0.
@@ -197,10 +196,9 @@ c         Subroutine fgrid --- formula of coordinate transform         *
 c======================================================================*
       SUBROUTINE fgrid(x,f,df)
       IMPLICIT none
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL x,f,df,eta
-      COMMON /cgrid/eta
+      include "constc.h"
+      include "cgrid.h"
+      REAL x,f,df
 c
 	f=alog(x/z0c+1.)+x/rlb-eta
 	df=1./(x+z0c)+1./rlb
@@ -216,8 +214,8 @@ c======================================================================*
       IMPLICIT none
       REAL fc,z0
       EXTERNAL fdlaw
-      REAL angle,aconst,ustar,a,b,rtsafe,edif
-      COMMON /cstab/a,b
+      REAL angle,aconst,ustar,rtsafe,edif
+      include "cstab.h"
 c
         a=2.
         b=4.5
@@ -234,10 +232,9 @@ c======================================================================*
       SUBROUTINE fdlaw(x,f,df)
       IMPLICIT none
       include "consta.h"
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL a,b,x,f,df
-      COMMON /cstab/a,b
+      include "constc.h"
+      REAL x,f,df
+      include "cstab.h"
 c
       f =x*x-(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)
       df=2.*x+2.*(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)**2
@@ -275,12 +272,9 @@ c======================================================================*
      2     kh(nj),km(nj),tl(nj),tld(nj),rnet(nj),dedzt(nj),zm(nj),zt(nj)
       REAL aconst,angle,cp,rgas,rpi,tgamma,fnqs,uin,vin
       include "consta.h"
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      include "constb.h"
+      include "constc.h"
+      include "flxsrf.h"
       EXTERNAL fnqs
 c
         u (1)=0.
@@ -374,10 +368,8 @@ c======================================================================*
      2                  nj,nw)
       IMPLICIT none
       include "consta.h"
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
+      include "constb.h"
+      include "constc.h"
       INTEGER nj,nw,j
       REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dudz(nj),dvdz(nj),
      1     dthdz(nj),dedzt(nj),zm(nj),zt(nj),e(nj),ep(nj),
@@ -497,12 +489,9 @@ c======================================================================*
      1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
       IMPLICIT none
       include "consta.h"
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      include "constb.h"
+      include "constc.h"
+      include "flxsrf.h"
       INTEGER nn,nj,nw,j
       REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dedzt(nj),zm(nj),zt(nj),
      1     e(nj),ep(nj),kh(nj),km(nj),rif(nj),rlmo(nj),tl(nj),tld(nj),
@@ -606,12 +595,9 @@ c-----------------------------------------------------------------------
       IMPLICIT none
       REAL x,fus,dfus
       include "consta.h"
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      REAL tdif,wind,rlo
-      COMMON /constus/tdif,wind,rlo
+      include "constc.h"
+      include "flxsrf.h"
+      include "constus.h"
       REAL fpsi_h,fpsi_m,dfpsi_m
       EXTERNAL fpsi_h,fpsi_m,dfpsi_m
 c
@@ -627,8 +613,7 @@ c----------------------------------------------------------------------*
       FUNCTION fphi_m(zol)
       IMPLICIT none
       REAL fphi_m,zol
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
+      include "constb.h"
 c
       IF(zol.lt.0.) THEN
         fphi_m=1./(1.-gammam*zol)**.25
@@ -644,8 +629,7 @@ c----------------------------------------------------------------------*
       FUNCTION fphi_h(zol)
       IMPLICIT none
       REAL fphi_h,zol
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
+      include "constb.h"
 c
       IF(zol.lt.0.) THEN
         fphi_h=pr/(1.-gammah*zol)**.5
@@ -663,8 +647,7 @@ c-----------------------------------------------------------------------
       FUNCTION fpsi_m(rlo,zr,z0)
       IMPLICIT none
       REAL fpsi_m,rlo,zr,z0,x,x0
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
+      include "constb.h"
 c
       IF(zr*rlo.lt.0.) THEN
         x=(1.-gammam*zr*rlo)**.25
@@ -684,8 +667,7 @@ c-----------------------------------------------------------------------
       FUNCTION dfpsi_m(betag,tstar,ustar,vk,zr,zol)
       IMPLICIT none
       REAL dfpsi_m,betag,tstar,ustar,vk,zr,zol,drldus,dxdus,x
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
+      include "constb.h"
 c
         drldus=2.*betam*betag*vk*tstar/(ustar*ustar*ustar)
       IF(zol.lt.0.) THEN
@@ -704,8 +686,7 @@ c-----------------------------------------------------------------------
       FUNCTION fpsi_h(rlo,zr,z0)
       IMPLICIT none
       REAL fpsi_h,rlo,zr,z0,x,x0
-      REAL betam,betah,gammam,gammah,pr
-      COMMON /constb/betam,betah,gammam,gammah,pr
+      include "constb.h"
 c
       IF(zr*rlo.lt.0.) THEN
         x=(1.-gammah*zr*rlo)**.5
@@ -864,10 +845,8 @@ c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
       REAL dedzt(nj),e(nj),ep(nj),kh(nj),km(nj),tld(nj),uw(nj),vw(nj),
      1     rnet(nj),zm(nj),wa(nv),wlo
       include "consta.h"
-      REAL z0c,z0,zref,ztop,eta1,deta,rlb
-      COMMON /constc/z0c,z0,zref,ztop,eta1,deta,rlb
-      REAL uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
-      COMMON /flxsrf/uw0,vw0,wt0,wq0,wqi0,ustar,tstar,qstar,qistar
+      include "constc.h"
+      include "flxsrf.h"
       INTEGER j,jp,jm
       REAL fnqs,deta2,rdif,rdis
       REAL fpsi_m,fpsi_h,rw1,rt1,rw2,rt2

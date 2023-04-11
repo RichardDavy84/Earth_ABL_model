@@ -21,6 +21,7 @@
 !  zm(j)-  mean varable nodes coordinates (u, v, t, q & qi)            *
 !  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 !***********************************************************************
+
 PROGRAM ABL
 
   use io
@@ -56,7 +57,7 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Time information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  type(datetime) :: time, time0, time1
+  type(datetime) :: time, next_time, time0, time1
   type(timedelta) :: dt
 
   ! Variables for the three dimensional model
@@ -76,11 +77,13 @@ PROGRAM ABL
   ! Inputs from forcing files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First are nudging values at 850 hPA
-  TYPE(input_var) :: u850, v850, t850
+  TYPE(input_var) :: u850_now, v850_now, t850_now, sdlw_now, sdsw_now
+  TYPE(input_var) :: u850_next, v850_next, t850_next, sdlw_next, sdsw_next
+  REAL :: u850, v850, t850, sdlw, sdsw
   ! Then surface fields: Mean surface downward long-wave radiation
   ! flux; Mean surface downward short-wave radiation flux, surface
   ! pressure, specific humidity at surface, and temperature at surface
-  TYPE(input_var) :: sdlw, sdsw, p0, q0, t0
+  TYPE(input_var) :: p0, q0, t0
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -102,7 +105,7 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
-  REAL :: slon, ha
+  REAL :: slon, ha, tint
   INTEGER, PARAMETER :: hoursec = 86400
   REAL, PARAMETER :: pi=4.*ATAN(1.)
 
@@ -146,8 +149,20 @@ PROGRAM ABL
   ! Initialise input files and read initial field
   ! example code for p0
   ! TODO: Read directory name (here "data") from namelist
+  ! Initial conditions
   call p0%init("msl", "data", rlon, rlat, time0)
-  call p0%read_input(time0)
+  call t0%init("???", "data", rlon, rlat, time0)
+  call q0%init("???", "data", rlon, rlat, time0)
+
+  ! Time dependent forcing
+  call u850_now%init("???", "data", rlon, rlat, time0)
+  call u850_next%init("???", "data", rlon, rlat, time0)
+
+  call v850_now%init("???", "data", rlon, rlat, time0)
+  call v850_next%init("???", "data", rlon, rlat, time0)
+
+  call t850_now%init("???", "data", rlon, rlat, time0)
+  call t850_next%init("???", "data", rlon, rlat, time0)
 
   ! Initialise output files
   call srfv_all%init('SRFV-ALL.nc', mgr, ngr, mask, rlon, rlat)
@@ -187,6 +202,11 @@ PROGRAM ABL
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   slon = (time%yearday()/365.2425)*360
+  call p0%read_input(time0)
+  call t0%read_input(time0)
+  call q0%read_input(time0)
+  call u850_now%read_input(time0)
+  call v850_now%read_input(time0)
   do m = 1, mgr
     do n = 1, ngr
 
@@ -195,7 +215,7 @@ PROGRAM ABL
 
       call Initialize_NeXtSIM_ABL( &
         albedo(m,n),                                                    & ! Internal or from coupler?
-        u850%get_point(m,n), v850%get_point(m,n),                       & ! From file
+        u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
         slon,                                                           & ! See above
         semis(m,n),                                                     & ! Internal or from coupler?
         rlat(m,n),                                                      &
@@ -259,8 +279,21 @@ PROGRAM ABL
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
+      ! Load ERA5 data every hour
+      next_time = time + timedelta(hours=1)
+      call t850_now%read_input(time)
+      call u850_now%read_input(time)
+      call v850_now%read_input(time)
+      call sdlw_now%read_input(time)
+      call sdsw_now%read_input(time)
+
+      call t850_next%read_input(next_time)
+      call u850_next%read_input(next_time)
+      call v850_next%read_input(next_time)
+      call sdlw_next%read_input(next_time)
+      call sdsw_next%read_input(next_time)
+
       do jm = 1, nmts
-        time = time + dt;
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
 
         do m = 1, mgr
@@ -269,25 +302,34 @@ PROGRAM ABL
             ! Skip the land points
             if ( mask(m,n) .eq. 0 ) continue
 
+            ! Time integration
+            tint = real(jm-1)/real(nmts)
+            t850 = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
+            u850 = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
+            v850 = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
+            sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
+            sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
+
             call Integrate_NeXtSIM_ABL( &
-              albedo(m,n),                                                  & ! Internal or from coupler?
-              t850%get_point(m,n), u850%get_point(m,n), v850%get_point(m,n),& ! From file
-              sdlw%get_point(m,n), sdsw%get_point(m,n),                     & ! From file
-              slon,                                                         & ! See above
-              semis(m,n),                                                   & ! Internal or from coupler?
-              rlat(m,n),                                                    &
-              z0(m,n),                                                      & ! Internal or from coupler?
-              taur(m,n),                                                    & ! Internal variable
-              p0%get_point(m,n),                                            & ! From file
-              ds, ha, jd,                                                   &
-              nj,                                                           & ! Number of vertical grid points
-              nv,                                                           & ! Always 6?
-              dedzm,dedzt,zm,zt,                                            & ! Output grid definitions?
-              u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),            & ! prognostics
-              e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),         & ! prognostics
-              wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n) )       ! prognostics
+              albedo(m,n),                                              & ! Internal or from coupler?
+              t850, u850, v850, sdlw, sdsw,                             & ! From file
+              slon,                                                     & ! See above
+              semis(m,n),                                               & ! Internal or from coupler?
+              rlat(m,n),                                                &
+              z0(m,n),                                                  & ! Internal or from coupler?
+              taur(m,n),                                                & ! Internal variable
+              p0%get_point(m,n),                                        & ! From file
+              ds, ha, jd,                                               &
+              nj,                                                       & ! Number of vertical grid points
+              nv,                                                       & ! Always 6?
+              dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
+              u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
+              e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
+              wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n) )   ! prognostics
           enddo
         enddo
+
+        time = time + dt;
 
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
@@ -333,5 +375,15 @@ PROGRAM ABL
 
     enddo
   enddo
+
+  CONTAINS
+
+    REAL FUNCTION hourint(t, val0, val1) RESULT(output)
+
+      REAL, INTENT(IN) :: t, val0, val1
+
+      output = t*val0 + (1.-t)*val1
+
+    END FUNCTION hourint
 
 END PROGRAM ABL

@@ -8,7 +8,6 @@ IOTEST = iotest.x
 # Put objects and libraries in seperate directories
 OBJ_DIR = .obj
 
-FFLAGS += -std=legacy
 LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -I $(OBJ_DIR)
 
 # The source files for modules
@@ -20,7 +19,7 @@ OBJ = $(SRC:%.f90=$(OBJ_DIR)/%.o)
 O77 = $(S77:%.for=$(OBJ_DIR)/%.o)
 
 $(ABL): ABL.f90 $(OBJ) $(O77)
-	$(FC) $(FFLAGS) $(LDFLAGS) $^ -o $@
+	$(FC) $(FFLAGS) $^ $(LDFLAGS) -o $@
 
 $(OBJ): $(OBJ_DIR)/%.o : %.f90
 	@mkdir -p $(OBJ_DIR)
@@ -31,7 +30,7 @@ $(O77): $(OBJ_DIR)/%.o : %.for
 	$(FC) -c $(FFLAGS) $< -o $@ $(MODFLAG) $(OBJ_DIR)
 
 $(IOTEST): iotest.for $(OBJ)
-	$(FC) $(FFLAGS) $(LDFLAGS) $^ -o $@
+	$(FC) $(FFLAGS) $^ $(LDFLAGS) -o $@
 
 test: $(IOTEST)
 	./$(IOTEST)

@@ -101,7 +101,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     elseif ( self%time_unit .eq. "days" ) then
       time_out = dt%total_seconds()/86400.
     else
-      stop "mod_io: netCDF_time: Case "//trim(self%time_unit)//" not recognised"
+      stop "mod_io: netCDF_time: Case not recognised:"!//trim(self%time_unit)//" not recognised"
     endif
 
     end function netCDF_time

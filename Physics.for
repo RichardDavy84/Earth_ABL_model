@@ -233,12 +233,20 @@ c======================================================================*
       IMPLICIT none
       include "consta.h"
       include "constc.h"
-      REAL x,f,df
+      REAL x,f,df,wspd
       include "cstab.h"
 c
-      f =x*x-(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)
-      df=2.*x+2.*(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)**2
+c     In the original model, ug = wind speed and vg = 0
+c     Now updated to make this more explicit
+      wspd = sqrt(ug**2 + vg**2)
+
+      f =x*x-(vk*wspd)**2/((alog(x/(fc*z0))-a)**2+b*b)
+      df=2.*x+2.*(vk*wspd)**2/((alog(x/(fc*z0))-a)**2+b*b)**2
      1          *(alog(x/(fc*z0))-a)/x
+c
+c     f =x*x-(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)
+c     df=2.*x+2.*(vk*ug)**2/((alog(x/(fc*z0))-a)**2+b*b)**2
+c    1          *(alog(x/(fc*z0))-a)/x
 c
       return
       END
@@ -285,14 +293,30 @@ c
 c---------Ekman Layer solutions for U and V
 c        u   (j)=ug*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j)))
 c        v   (j)=    ug*exp(-aconst*zm(j))*sin(aconst*zm(j))
-        uin=ug*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j)))
-        vin=    ug*exp(-aconst*zm(j))*sin(aconst*zm(j))
+cccc
+c        print *, "ug and vg for initialising in subprof ",ug,vg
+
+        uin=SQRT(ug**2+vg**2)*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j))) !HCR change
+        vin=SQRT(ug**2+vg**2)*exp(-aconst*zm(j))*sin(aconst*zm(j)) !HCR change
+c        uin=ug*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j)))
+c        vin=    ug*exp(-aconst*zm(j))*sin(aconst*zm(j))
+cccc
           tg=SQRT(ABS(fc)/2.)*zm(j)
 c        uin=ug*(1.-exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
 c        vin=ug*exp(-tg)*sin(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi)
-        u   (j)=ug*(1.
-     1            -exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
-        v   (j)=ug*exp(-tg)*sin(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi)
+cccc
+        u   (j)=ug*(1.*j/(1.*nj)) !*(1.
+c     1            -exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
+        v   (j)=vg*(1.*j/(1.*nj)) !*exp(-tg)*sin(tg-(20.-45.)*rpi)
+c     1            *SQRT(2.)*SIN(20.*rpi)
+c        u   (j)=SQRT(ug**2+vg**2)*(1.
+c     1            -exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
+c        v   (j)=SQRT(ug**2+vg**2)*exp(-tg)*sin(tg-(20.-45.)*rpi)
+c     1            *SQRT(2.)*SIN(20.*rpi)
+c        u   (j)=ug*(1.
+c     1            -exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
+c        v   (j)=ug*exp(-tg)*sin(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi)
+cccc
         t   (j)=t(1)-tgamma*zm(j)
 	p   (j)=p(j-1)-p(j-1)/t(j-1)*grav/rgas*deta/dedzt(j-1)
 c	p   (j)=p(j-1)-p(j-1)/t(j-1)*grav/rgas*(zm(j)-zm(j-1))
@@ -394,6 +418,7 @@ c---------Calculating the flux Richardson number
         rif(j)=betag*dthdz(j)/pr/
 c     1              (dudz(j)*dudz(j)+dvdz(j)*dvdz(j))
      1              (dudz(j)*dudz(j)+dvdz(j)*dvdz(j)+1.e-12)
+c        print *, "rif before min ",rif(j)
         rif(j)=min(rifc,rif(j))
  20   continue
 c---------Calculating the Obukhov length
@@ -506,11 +531,13 @@ c==============Calculating wall-layer quantities
 c---------a) u*, t*, q*, qi* and Lo based on mean variables at z=zm(nw)
           utmp=alog(zm(nw)/z0+1.)
         wind=SQRT(u(nw)*u(nw)+v(nw)*v(nw))
+c        wind=10.
         tdif=theta(nw)-theta(1)
         wlo=-vk*betag*wt0/ustar**3
 c        WRITE(6,'(15x," utmp,wind : ",2e16.8,/,
 c     1            15x,"Theta_0,_1 : ",2e16.8)')
 c     2    utmp,wind,theta(1),theta(nw)
+c      tstar=0.001
       do j=1,nn
           ustar1=ustar
           tstar1=tstar

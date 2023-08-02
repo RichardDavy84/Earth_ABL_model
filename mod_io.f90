@@ -23,17 +23,18 @@ module io
     logical, private :: is_initialised = .false.
 
     integer, private, dimension(:,:), allocatable :: a_lon, b_lon, a_lat, b_lat
-    real, private, dimension(:,:), allocatable :: data2D, r, s
+    real, private, dimension(:,:), allocatable :: data2D, r, s, r2, s2
     character(len=short_string), private :: vname
     character(len=long_string), private :: dirname
 
     character(len=long_string), private :: fname_format = "${dir}/ERA5_${var}_y%Y.nc"
+    character(len=long_string), private :: fname_format2 = "${dir}/Moorings_%Ym%m.nc"
     character(len=9), private :: lon_name = "longitude"
     character(len=8), private :: lat_name = "latitude"
 
     contains
       procedure, public :: init=>init_input_var, read_input, get_point, get_array
-      procedure, private :: calc_weights, interp2D, get_filename
+      procedure, private :: calc_weights, interp2D, get_filename,calc_weights_2Dll,hvs
   end type
 
   ! An output variable (private)
@@ -154,12 +155,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
 !   - TODO: Add the third dimension
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine init_input_var(self, varname, dirname, lon, lat, time)
+  subroutine init_input_var(self, varname, dirname, lon, lat, time, filename_st)
 
     implicit none
 
     class(input_var), intent(inout) :: self
-    character(len=*), intent(in) :: varname, dirname
+    character(len=*), intent(in) :: varname, dirname, filename_st
     real, dimension(:,:), allocatable :: lon, lat
     type(datetime), intent(in) :: time
 
@@ -168,6 +169,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     integer :: i, j
     real, dimension(:,:), allocatable :: lon_fx
     real, dimension(:), allocatable :: elon, elat
+    real, dimension(:,:), allocatable :: elon2, elat2
     character(len=short_string), dimension(:), allocatable :: dimnames
     character(len=long_string) :: fname
 
@@ -176,17 +178,27 @@ double precision function netCDF_time(self, time_in) result(time_out)
     self%dirname = dirname
 
     ! Get file name - we can't save it, because it may change with time
-    fname = self%get_filename(time)
+    fname = self%get_filename(time, filename_st)
 
     ! get the dims and allocate and read from file
     call nc_dims(fname, self%lon_name, dimnames, dimlens)
-    allocate(elon(dimlens(1)+1))
-    call nc_read(fname, self%lon_name, elon(1:dimlens(1)))
-    elon(dimlens(1)+1) = 360. ! to get periodic boundary
+    if (filename_st == "ERA" ) then
+      allocate(elon(dimlens(1)+1))
+      call nc_read(fname, self%lon_name, elon(1:dimlens(1)))
+      elon(dimlens(1)+1) = 360. ! to get periodic boundary
+    elseif (filename_st == "Moorings") then
+      allocate(elon2(dimlens(1),dimlens(2)))
+      call nc_read(fname, self%lon_name, elon2(1:dimlens(1),1:dimlens(2)))
+    endif
 
     call nc_dims(fname, self%lat_name, dimnames, dimlens)
-    allocate(elat(dimlens(1)))
-    call nc_read(fname, self%lat_name, elat)
+    if (filename_st == "ERA" ) then
+      allocate(elat(dimlens(1)))
+      call nc_read(fname, self%lat_name, elat)
+    elseif (filename_st == "Moorings") then
+      allocate(elat2(dimlens(1),dimlens(2)))
+      call nc_read(fname, self%lat_name, elat2)
+    endif
 
     ! We need input longitudes in [0, 360] - like ERA
     allocate(lon_fx, mold=lon)
@@ -201,7 +213,13 @@ double precision function netCDF_time(self, time_in) result(time_out)
     enddo
 
     ! Calculate weights:
-    call calc_weights(self, elon, elat, lon_fx, lat)
+!    print *, "about to calculate weights for ",filename_st
+    if (filename_st == "ERA") then
+      call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
+    elseif (filename_st == "Moorings") then
+      call calc_weights_2Dll(self, elon2, elat2, lon_fx, lat) !this will be different with 2d lat lon 
+    endif
+    print *, "calculated weights ",self%a_lon,self%a_lat,self%b_lon,self%b_lat
 
     ! TODO: Add 3D here
     ! Allocate data array
@@ -216,12 +234,14 @@ double precision function netCDF_time(self, time_in) result(time_out)
 !   - We read from data and call interp2D to interpolate onto the model grid
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine read_input(self, time)
+  subroutine read_input(self, time, filename_st)
 
     implicit none
 
     class(input_var), intent(inout) :: self
     type(datetime), intent(in) :: time
+
+    character(len=*), intent(in) :: filename_st ! HCRadd
 
     ! Working variables
     integer, allocatable :: dimlens(:)
@@ -233,7 +253,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     type(timedelta) :: dt
 
     ! Get file name
-    fname = self%get_filename(time)
+    fname = self%get_filename(time, filename_st)
 
     ! Deduce the time slice
     t0 = datetime(time%getYear(), 01, 01)
@@ -243,17 +263,31 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Get size of input data and allocate
     call nc_dims(fname, self%vname, dimnames, dimlens)
     allocate(data_ll(dimlens(1)+1, dimlens(2)))
+!    print *, "dimensions of input data ",dimlens
 
     ! Read from file
-    call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
-      start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+    ! print *, "about to read ",fname
+    if (filename_st == "ERA") then
+!      print *, "ncread with ERA"
+      call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
+        start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+!      print *, "ncread with ERA done"
+    elseif (filename_st == "Moorings") then
+!      print *, "ncread with Moorings"
+      call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
+        start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+!      print *, "ncread with Moorings done"
+    endif
+    ! print *, "data_ll ",data_ll(1403,40)
 
     ! Fix to get periodic boundary
     data_ll(dimlens(1)+1,:) = data_ll(1,:)
 
     ! TODO: Add 3D here
     ! Interpolate to grid
-    call interp2D(self, data_ll)
+    call interp2D(self, data_ll, filename_st)
+    ! print *, "after interp2D, values are "
+    ! print *, self%data2D
 
   end subroutine read_input
 
@@ -277,6 +311,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! TODO: Add 3D here
     data = self%data2D(i,j)
+    ! print *, "got point, pointis ",self%data2D(i,j)
 
   end function get_point
 
@@ -297,12 +332,14 @@ double precision function netCDF_time(self, time_in) result(time_out)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Get the name of input file based on a format string
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  function get_filename(self, time) result(fname)
+  function get_filename(self, time, filename_st) result(fname)
 
     implicit none
 
     class(input_var), intent(in) :: self
     type(datetime), intent(in) :: time
+
+    character(len=*) :: filename_st
 
     ! The result
     character(len=long_string) :: fname
@@ -311,15 +348,35 @@ double precision function netCDF_time(self, time_in) result(time_out)
     integer :: i
 
     ! Use c_strftime to format the time part of the file name
-    i = c_strftime(fname, len(fname), self%fname_format, time%tm())
+    if ( filename_st == "ERA" ) then
+      i = c_strftime(fname, len(fname), self%fname_format, time%tm())
+    elseif ( filename_st == "Moorings" ) then
+      i = c_strftime(fname, len(fname), self%fname_format2, time%tm())
+    endif
 
-    ! Replace ${var} with self%vname
-    i = index(fname, "${var}")
-    fname = fname(1:i-1)//trim(self%vname)//fname(i+6:len(fname))
+    if ( filename_st == "ERA" ) then
 
-    ! Replace ${dir} with self%dirname
-    i = index(fname, "${dir}")
-    fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
+!        print *, "start ERA fname ",fname
+
+        ! Replace ${var} with self%vname
+        i = index(fname, "${var}")
+        fname = fname(1:i-1)//trim(self%vname)//fname(i+6:len(fname))
+    
+        ! Replace ${dir} with self%dirname
+        i = index(fname, "${dir}")
+        fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
+!        print *, "intermediate ERA fname 2 ",fname
+  
+    elseif ( filename_st == "Moorings" ) then
+
+        ! Replace ${dir} with self%dirname
+        i = index(fname, "${dir}")
+        fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
+!        print *, "intermediate Moorings fname 2 ",fname
+
+    endif
+
+!    print *, "filename ",fname
 
     return
 
@@ -347,42 +404,231 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     do i = 1, size(lon_out,1)
       do j = 1, size(lon_out,2)
-        call bisect(lon_out(i,j), lon_in, self%a_lon(i,j), self%b_lon(i,j))
-        call bisect(lat_out(i,j), lat_in, self%a_lat(i,j), self%b_lat(i,j))
 
-        x = lon_out(i,j)
-        y = lat_out(i,j)
-        x1 = lon_in(self%a_lon(i,j))
-        x2 = lon_in(self%b_lon(i,j))
-        y1 = lat_in(self%a_lat(i,j))
-        y2 = lat_in(self%b_lat(i,j))
+          call bisect(lon_out(i,j), lon_in, self%a_lon(i,j), self%b_lon(i,j))
+          call bisect(lat_out(i,j), lat_in, self%a_lat(i,j), self%b_lat(i,j))
 
-        self%r(i,j) = (x - x1)/(x2 - x1)
-        self%s(i,j) = (y - y1)/(y2 - y1)
+          x = lon_out(i,j)
+          y = lat_out(i,j)
+          x1 = lon_in(self%a_lon(i,j))
+          x2 = lon_in(self%b_lon(i,j))
+          y1 = lat_in(self%a_lat(i,j))
+          y2 = lat_in(self%b_lat(i,j))
+  
+          self%r(i,j) = (x - x1)/(x2 - x1)
+          self%s(i,j) = (y - y1)/(y2 - y1)
 
       enddo
     enddo
 
   end subroutine calc_weights
 
-! Do the interpolation
-  subroutine interp2D(self, data_in)
+! Pre-calculate weights
+  subroutine calc_weights_2Dll(self, lon_in, lat_in, lon_out, lat_out)
 
     implicit none
 
     class(input_var), intent(inout) :: self
-    real, dimension(:,:), intent(in) :: data_in
+    real, dimension(:,:), intent(in) :: lat_out, lon_out
+    real, dimension(:,:), intent(in) :: lon_in, lat_in
 
     ! Working variables
     integer :: i, j
     real :: x1, x2, y1, y2, x, y
 
+    real :: mindst, thismindst, dst1, dst2, dst3, dst4
+    integer :: i_in, j_in, continue_now
+
+    allocate( self%a_lon(size(lon_out,1), size(lon_out,2) ) )
+    allocate( self%b_lon, self%a_lat, self%b_lat, mold=self%a_lon )
+    allocate( self%r, self%s, self%r2, self%s2, mold=lon_out )
+
+!    print *, "starting loop of calc_weights_2dll"
+
+    do i = 1, size(lon_out,1)
+!      print *, "i count ",i
+      do j = 1, size(lon_out,2)
+!          print *, "j count ",j
+
+          ! hard-coded to compile! BUT NUMBERS ARE WRONG
+          ! a_lon is the lower corner of the X nextsim dimension (L-R in ncview,
+          ! len 528 in NANUK). a_lat is the lower corner of the Y nextsim
+          ! dimension (down-up in ncview, len 603 in NANUK).
+          ! grid is very irregular so cannot rely on normal square assumptions
+          mindst = 10000000.
+          do i_in = 1, size(lon_in,1)-1
+            ! print *, "i_in count ",i_in
+            do j_in = 1, size(lon_in,2)-1
+              ! print *, "j_in count ",j_in
+
+              ! First do a quick check that latitude and longitude are nearby
+              ! (within 1 degree)
+              continue_now = 0
+              if ( abs(lat_in(i_in,j_in)-lat_out(i,j)).lt.1. ) then
+                if ( ( lon_out(i,j).lt.0.5 ).and.( lon_in(i_in,j_in).gt.359.5 ) ) then
+                  continue_now = 1
+                elseif ( (lon_in(i_in,j_in).lt.0.5 ).and.( lon_out(i,j).gt.359.5 ) ) then
+                  continue_now = 1
+                elseif ( abs(lon_in(i_in,j_in)-lon_out(i,j)).lt.1. ) then
+                  continue_now = 1
+                endif
+              endif
+                
+              if (continue_now == 1) then
+
+!                print *,"proceeding",lat_in(i_in,j_in),lon_in(i_in,j_in)
+!                print *, lat_out(i,j),lon_out(i,j)
+!               call hvs(self, 80.,81.,150.,151.,dst1)                
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lat_in(i_in,j_in),dst1)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lat_in(i_in+1,j_in),dst2)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lat_in(i_in,j_in+1),dst3)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lat_in(i_in+1,j_in+1),dst4)
+
+                thismindst = MIN(dst1,dst2,dst3,dst4)
+                if (thismindst.lt.mindst) then
+                  mindst = thismindst
+                  self%a_lon(i,j) = i_in
+                  self%b_lon(i,j) = i_in+1
+                  self%a_lat(i,j) = j_in
+                  self%b_lat(i,j) = j_in+1
+                  self%r(i,j) = dst1
+                  self%r2(i,j) = dst2
+                  self%s(i,j) = dst3
+                  self%s2(i,j) = dst4
+                endif
+
+              endif
+            enddo  
+          enddo
+
+!          print *, "these were final values"
+!          print *, self%a_lon(i,j),self%b_lon(i,j),self%a_lat(i,j),self%b_lat(i,j) 
+!          print *, self%r(i,j),self%r2(i,j),self%s(i,j),self%s2(i,j) 
+  
+
+          ! self%a_lon(i,j) = 200
+          ! self%b_lon(i,j) = 201
+          ! self%a_lat(i,j) = 500
+          ! self%b_lat(i,j) = 501
+          ! self%r(i,j) = 0.25
+          ! self%s(i,j) = 0.25
+
+      enddo
+    enddo
+
+  end subroutine calc_weights_2Dll
+
+  subroutine hvs(self,lat_1,lat_2,lon_1,lon_2,dst)
+
+    implicit none
+
+    class(input_var), intent(inout) :: self
+
+    real, intent(in) :: lat_1, lat_2, lon_1, lon_2
+    real, intent(inout) :: dst
+
+    ! working
+    real :: pi, phi1, phi2, delta_phi, delta_lambda, R, a, c
+ 
+    pi = 3.14159
+    R = 6371000 ! Radius of Earth in metres
+
+    ! use Haversine formula to get minimum distances and weights
+    phi1 = lat_1*pi/180.
+    phi2 = lat_2*pi/180.
+    delta_phi = (lat_2-lat_1)*pi/180.
+    delta_lambda = (lon_2-lon_1)*pi/180.
+
+    a = SIN(delta_phi/2.)**2 + COS(phi1)*COS(phi2)*SIN(delta_lambda/2.)**2
+    c = 2*atan2(SQRT(a), SQRT(1-a))
+              
+    dst = R*c/1000. ! distance in km (easier to handle) 
+
+  end subroutine hvs
+
+! Do the interpolation
+  subroutine interp2D(self, data_in, filename_st)
+
+    implicit none
+
+    class(input_var), intent(inout) :: self
+    real, dimension(:,:), intent(in) :: data_in
+    character(len=*), intent(in) :: filename_st
+
+    real :: data_in_1, data_in_2, data_in_3, data_in_4
+    real :: scale_1, scale_2, scale_3, scale_4, scale_sum
+ 
+    ! Working variables
+    integer :: i, j
+    real :: x1, x2, y1, y2, x, y
+
+    ! print *, "ABOUT TO INTERP IN MOD_IO"
+    ! print *, "i range, jrange ",size(self%data2D,1),size(self%data2D,2)
+
     do i = 1, size(self%data2D,1)
       do j = 1, size(self%data2D,2)
-        self%data2D(i,j) = data_in( self%a_lon(i,j), self%a_lat(i,j) ) * (1-self%r(i,j))*(1-self%s(i,j)) &
-                         + data_in( self%b_lon(i,j), self%a_lat(i,j) ) *     self%r(i,j)*(1-self%s(i,j)) &
-                         + data_in( self%b_lon(i,j), self%b_lat(i,j) ) *     self%r(i,j)*self%s(i,j)     &
-                         + data_in( self%a_lon(i,j), self%b_lat(i,j) ) * (1-self%r(i,j))*self%s(i,j)
+        data_in_1 = data_in( self%a_lon(i,j), self%a_lat(i,j) )
+        scale_1 = (1-self%r(i,j))*(1-self%s(i,j)) 
+        data_in_2 = data_in( self%b_lon(i,j), self%a_lat(i,j) ) 
+!        print *, "data in ",data_in_2
+        scale_2 = self%r(i,j)*(1-self%s(i,j)) 
+        data_in_3 = data_in( self%b_lon(i,j), self%b_lat(i,j) ) 
+!        print *, "data in ",data_in_3
+        scale_3 = self%r(i,j)*self%s(i,j)     
+        data_in_4 = data_in( self%a_lon(i,j), self%b_lat(i,j) ) 
+!        print *, "data in ",data_in_4
+        scale_4 = (1-self%r(i,j))*self%s(i,j)
+!        print *, "sum of normal scales ",scale_1+scale_2+scale_3+scale_4
+ 
+        if (filename_st == "Moorings") then
+          scale_sum = self%r(i,j)+self%r2(i,j)+self%s(i,j)+self%s2(i,j)
+          scale_1 = self%r(i,j)/scale_sum
+          scale_2 = self%r2(i,j)/scale_sum
+          scale_3 = self%s(i,j)/scale_sum
+          scale_4 = self%s2(i,j)/scale_sum
+!          print *, "sum of Moorings scales ",scale_1+scale_2+scale_3+scale_4
+        endif
+
+        ! HCR if one or more of the values is "missing"
+        scale_sum = 1.
+        if (data_in_1.eq.-9999.0) then
+!          print *, "data 1 is missing!",i,j
+          scale_sum = scale_sum - scale_1 
+          scale_1 = 0.
+        endif
+        if (data_in_2.eq.-9999.0) then
+!          print *, "data 2 is missing!",i,j
+          scale_sum = scale_sum - scale_2 
+          scale_2 = 0.
+        endif
+        if (data_in_3.eq.-9999.0) then
+!          print *, "data 3 is missing!",i,j
+          scale_sum = scale_sum - scale_3
+          scale_3 = 0.
+        endif
+        if (data_in_4.eq.-9999.0) then
+!          print *, "data 4 is missing!",i,j
+          scale_sum = scale_sum - scale_4 
+          scale_4 = 0.
+        endif
+        self%data2D(i,j) = data_in_1*scale_1/scale_sum &
+                         + data_in_2*scale_2/scale_sum &
+                         + data_in_3*scale_3/scale_sum &
+                         + data_in_4*scale_4/scale_sum 
+        !  print *, "i j ",i,j
+        !  print *, "mod_io interp2D data is ",self%data2D(i,j)
+        !  print *, "a_lon,a_lat ",self%a_lon(i,j),self%a_lat(i,j)
+        !  print *, "b_lon,b_lat ",self%b_lon(i,j),self%b_lat(i,j)
+        !  print *, "r,s ",self%r(i,j),self%s(i,j)
+        !  print *, data_in( self%a_lon(i,j), self%a_lat(i,j) )
+        !  print *, data_in( self%b_lon(i,j), self%a_lat(i,j) )
+        !  print *, data_in( self%b_lon(i,j), self%b_lat(i,j) ) 
+        !  print *, data_in( self%a_lon(i,j), self%b_lat(i,j) ) 
+        !  print *, data_in( self%a_lon(i,j), self%a_lat(i,j) ) * (1-self%r(i,j))*(1-self%s(i,j)) 
+        !  print *, data_in( self%b_lon(i,j), self%a_lat(i,j) ) *     self%r(i,j)*(1-self%s(i,j)) 
+        !  print *, data_in( self%b_lon(i,j), self%b_lat(i,j) ) *     self%r(i,j)*self%s(i,j)     
+        !  print *, data_in( self%a_lon(i,j), self%b_lat(i,j) ) * (1-self%r(i,j))*self%s(i,j)
+        ! endif
       enddo
     enddo
 

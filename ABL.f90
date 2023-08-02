@@ -52,6 +52,7 @@ PROGRAM ABL
   IMPLICIT none
   INTEGER nj,nv,ni
   PARAMETER(nj=31,nv=6,ni=11)
+!  PARAMETER(nj=31,nv=6,ni=11)
 
   INTEGER, PARAMETER :: dbl=8
 
@@ -80,9 +81,12 @@ PROGRAM ABL
   ! Inputs from forcing files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First are nudging values at 850 hPA
-  TYPE(input_var) :: u850_now, v850_now, t850_now, sdlw_now, sdsw_now
-  TYPE(input_var) :: u850_next, v850_next, t850_next, sdlw_next, sdsw_next
+  TYPE(input_var) :: u850_now,v850_now,t850_now,sdlw_now,sdsw_now
+  TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
+  TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
   REAL :: u850, v850, t850, sdlw, sdsw
+  REAL, ALLOCATABLE :: sic, sit, snt !for conductive heat flux
+  REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
   TYPE(input_var) :: u900_now, u925_now, u950_now, u975_now, u1000_now
   TYPE(input_var) :: v700_now, v750_now, v775_now, v800_now, v825_now, v875_now
@@ -166,8 +170,8 @@ PROGRAM ABL
   print *, "maxval(rlat) = ", maxval(rlat), "minval(rlat) = ", minval(rlat)
 
   ! TODO: Time information from namelist
-  time0 = datetime(2007,01,02)
-  time1 = datetime(2007,01,03)
+  time0 = datetime(2007,01,01)
+  time1 = datetime(2007,01,10)
   dt = timedelta(seconds=5)
   ds = dt%getSeconds()
   nmts = hoursec/ds
@@ -190,9 +194,9 @@ PROGRAM ABL
   ! example code for p0
   ! TODO: Read directory name (here "data") from namelist
   ! Initial conditions
-  call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
 !  hPa(1)=700.
 !  hPa(2)=750.
@@ -208,112 +212,120 @@ PROGRAM ABL
 !  hPa(12)=1000.
 
   ! Time dependent forcing
-  call u850_now%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u850_next%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u850_now%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u850_next%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call v850_now%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v850_next%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call v850_now%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v850_next%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call t850_now%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t850_next%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call t850_now%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t850_next%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u700_now%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u700_next%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v700_now%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v700_next%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t700_now%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t700_next%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u700_now%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u700_next%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v700_now%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v700_next%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t700_now%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t700_next%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u750_now%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u750_next%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v750_now%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v750_next%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t750_now%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t750_next%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u750_now%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u750_next%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v750_now%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v750_next%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t750_now%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t750_next%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u775_now%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u775_next%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v775_now%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v775_next%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t775_now%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t775_next%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u775_now%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u775_next%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v775_now%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v775_next%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t775_now%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t775_next%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u800_now%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u800_next%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v800_now%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v800_next%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t800_now%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t800_next%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u800_now%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u800_next%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v800_now%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v800_next%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t800_now%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t800_next%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u825_now%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u825_next%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v825_now%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v825_next%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t825_now%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t825_next%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u825_now%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u825_next%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v825_now%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v825_next%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t825_now%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t825_next%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u875_now%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u875_next%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v875_now%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v875_next%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t875_now%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t875_next%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u875_now%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u875_next%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v875_now%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v875_next%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t875_now%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t875_next%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u900_now%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u900_next%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v900_now%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v900_next%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t900_now%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t900_next%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u900_now%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u900_next%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v900_now%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v900_next%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t900_now%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t900_next%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u925_now%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u925_next%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v925_now%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v925_next%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t925_now%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t925_next%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u925_now%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u925_next%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v925_now%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v925_next%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t925_now%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t925_next%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u950_now%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u950_next%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v950_now%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v950_next%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t950_now%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t950_next%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u950_now%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u950_next%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v950_now%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v950_next%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t950_now%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t950_next%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u975_now%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u975_next%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v975_now%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v975_next%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t975_now%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t975_next%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u975_now%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u975_next%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v975_now%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v975_next%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t975_now%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t975_next%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call u1000_now%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call u1000_next%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v1000_now%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call v1000_next%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t1000_now%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call t1000_next%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call u1000_now%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u1000_next%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v1000_now%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v1000_next%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t1000_now%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t1000_next%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
   !! Added by HCR
-  call sdlw_now%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call sdlw_next%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call sdlw_now%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call sdlw_next%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  call sdsw_now%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
-  call sdsw_next%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0)
+  call sdsw_now%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call sdsw_next%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+
+  print *, "initialising si from Moorings"
+  call sic_now%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sit_now%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call snt_now%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   slon = (time%yearday()/365.2425)*360
-  call p0%read_input(time0)
+  call p0%read_input(time0, "ERA")
   print *, "read p0 input"
-  call t0%read_input(time0)
+  call t0%read_input(time0, "ERA")
   print *, "read t0 input"
-  call q0%read_input(time0)
+  call q0%read_input(time0, "ERA")
   print *, "read q0 input"
-  call u850_now%read_input(time0)
+  call u850_now%read_input(time0, "ERA")
   print *, "read u850 input"
-  call v850_now%read_input(time0)
+  call v850_now%read_input(time0, "ERA")
   print *, "read v850 input"
   do m = 1, mgr
     do n = 1, ngr
@@ -381,6 +393,7 @@ PROGRAM ABL
 
       print *, "about to INITIALIZE!!!"
 
+!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
       call Initialize_NeXtSIM_ABL( &
         albedo(m,n),                                                    & ! Internal or from coupler?
 !        u_in, v_in,                                                     &
@@ -399,7 +412,7 @@ PROGRAM ABL
         u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),              & ! prognostics
         e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),           & ! prognostics
         wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
-        p(m,n,:), tld(m,n,:))                                            ! prognostics
+        p(m,n,:), tld(m,n,:) )                                            ! prognostics
       print *, "ustar from initialize: ",ustar(m,n)
 
     enddo
@@ -517,100 +530,121 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Time stepping
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!  HCR add: initialise values for conductive heat flux!
+  Tsurf = t(:,:,1)  
+  print *, "initialising Tsurf",t(:,:,1),-2.+273.15
+  do m = 1, mgr
+    do n = 1, ngr
+      print *, "setting Tsurf"
+      Tsurf(m,n) = -2. + 273.15
+    enddo
+  enddo
+
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
       ! Load ERA5 data every hour
       next_time = time + timedelta(hours=1)
-      call t850_now%read_input(time)
-      call u850_now%read_input(time)
-      call v850_now%read_input(time)
-      call sdlw_now%read_input(time)
-      call sdsw_now%read_input(time)
+      call t850_now%read_input(time, "ERA")
+      call u850_now%read_input(time, "ERA")
+      call v850_now%read_input(time, "ERA")
+      call sdlw_now%read_input(time, "ERA")
+      call sdsw_now%read_input(time, "ERA")
+      call sic_now%read_input(time, "Moorings")
+      call sit_now%read_input(time, "Moorings")
+      call snt_now%read_input(time, "Moorings")
 
-      call t850_next%read_input(next_time)
-      call u850_next%read_input(next_time)
-      call v850_next%read_input(next_time)
-      call sdlw_next%read_input(next_time)
-      call sdsw_next%read_input(next_time)
+      call t850_next%read_input(next_time, "ERA")
+      call u850_next%read_input(next_time, "ERA")
+      call v850_next%read_input(next_time, "ERA")
+      call sdlw_next%read_input(next_time, "ERA")
+      call sdsw_next%read_input(next_time, "ERA")
+      call sic_next%read_input(next_time, "Moorings")
+      call sit_next%read_input(next_time, "Moorings")
+      call snt_next%read_input(next_time, "Moorings")
 
-      call t700_now%read_input(time)
-      call u700_now%read_input(time)
-      call v700_now%read_input(time)
-      call t700_next%read_input(next_time)
-      call u700_next%read_input(next_time)
-      call v700_next%read_input(next_time)
+      print *, "READING t700 t12 NOW input"
+      call t700_now%read_input(time, "ERA")
+      print *, "READ t700 t12 NOW input"
+      call u700_now%read_input(time, "ERA")
+      call v700_now%read_input(time, "ERA")
+      print *, "READING t700 t12 NEXT input"
+      call t700_next%read_input(next_time, "ERA")
+      print *, "READ t700 t12 NEXT input"
+      call u700_next%read_input(next_time, "ERA")
+      call v700_next%read_input(next_time, "ERA")
 
-      call t750_now%read_input(time)
-      call u750_now%read_input(time)
-      call v750_now%read_input(time)
-      call t750_next%read_input(next_time)
-      call u750_next%read_input(next_time)
-      call v750_next%read_input(next_time)
+      call t750_now%read_input(time, "ERA")
+      call u750_now%read_input(time, "ERA")
+      call v750_now%read_input(time, "ERA")
+      call t750_next%read_input(next_time, "ERA")
+      call u750_next%read_input(next_time, "ERA")
+      call v750_next%read_input(next_time, "ERA")
 
-      call t775_now%read_input(time)
-      call u775_now%read_input(time)
-      call v775_now%read_input(time)
-      call t775_next%read_input(next_time)
-      call u775_next%read_input(next_time)
-      call v775_next%read_input(next_time)
+      call t775_now%read_input(time, "ERA")
+      call u775_now%read_input(time, "ERA")
+      call v775_now%read_input(time, "ERA")
+      call t775_next%read_input(next_time, "ERA")
+      call u775_next%read_input(next_time, "ERA")
+      call v775_next%read_input(next_time, "ERA")
 
-      call t800_now%read_input(time)
-      call u800_now%read_input(time)
-      call v800_now%read_input(time)
-      call t800_next%read_input(next_time)
-      call u800_next%read_input(next_time)
-      call v800_next%read_input(next_time)
+      call t800_now%read_input(time, "ERA")
+      call u800_now%read_input(time, "ERA")
+      call v800_now%read_input(time, "ERA")
+      call t800_next%read_input(next_time, "ERA")
+      call u800_next%read_input(next_time, "ERA")
+      call v800_next%read_input(next_time, "ERA")
 
-      call t825_now%read_input(time)
-      call u825_now%read_input(time)
-      call v825_now%read_input(time)
-      call t825_next%read_input(next_time)
-      call u825_next%read_input(next_time)
-      call v825_next%read_input(next_time)
+      call t825_now%read_input(time, "ERA")
+      call u825_now%read_input(time, "ERA")
+      call v825_now%read_input(time, "ERA")
+      call t825_next%read_input(next_time, "ERA")
+      call u825_next%read_input(next_time, "ERA")
+      call v825_next%read_input(next_time, "ERA")
 
-      call t875_now%read_input(time)
-      call u875_now%read_input(time)
-      call v875_now%read_input(time)
-      call t875_next%read_input(next_time)
-      call u875_next%read_input(next_time)
-      call v875_next%read_input(next_time)
+      call t875_now%read_input(time, "ERA")
+      call u875_now%read_input(time, "ERA")
+      call v875_now%read_input(time, "ERA")
+      call t875_next%read_input(next_time, "ERA")
+      call u875_next%read_input(next_time, "ERA")
+      call v875_next%read_input(next_time, "ERA")
 
-      call t900_now%read_input(time)
-      call u900_now%read_input(time)
-      call v900_now%read_input(time)
-      call t900_next%read_input(next_time)
-      call u900_next%read_input(next_time)
-      call v900_next%read_input(next_time)
+      call t900_now%read_input(time, "ERA")
+      call u900_now%read_input(time, "ERA")
+      call v900_now%read_input(time, "ERA")
+      call t900_next%read_input(next_time, "ERA")
+      call u900_next%read_input(next_time, "ERA")
+      call v900_next%read_input(next_time, "ERA")
 
-      call t925_now%read_input(time)
-      call u925_now%read_input(time)
-      call v925_now%read_input(time)
-      call t925_next%read_input(next_time)
-      call u925_next%read_input(next_time)
-      call v925_next%read_input(next_time)
+      call t925_now%read_input(time, "ERA")
+      call u925_now%read_input(time, "ERA")
+      call v925_now%read_input(time, "ERA")
+      call t925_next%read_input(next_time, "ERA")
+      call u925_next%read_input(next_time, "ERA")
+      call v925_next%read_input(next_time, "ERA")
 
-      call t950_now%read_input(time)
-      call u950_now%read_input(time)
-      call v950_now%read_input(time)
-      call t950_next%read_input(next_time)
-      call u950_next%read_input(next_time)
-      call v950_next%read_input(next_time)
+      call t950_now%read_input(time, "ERA")
+      call u950_now%read_input(time, "ERA")
+      call v950_now%read_input(time, "ERA")
+      call t950_next%read_input(next_time, "ERA")
+      call u950_next%read_input(next_time, "ERA")
+      call v950_next%read_input(next_time, "ERA")
 
-      call t975_now%read_input(time)
-      call u975_now%read_input(time)
-      call v975_now%read_input(time)
-      call t975_next%read_input(next_time)
-      call u975_next%read_input(next_time)
-      call v975_next%read_input(next_time)
+      call t975_now%read_input(time, "ERA")
+      call u975_now%read_input(time, "ERA")
+      call v975_now%read_input(time, "ERA")
+      call t975_next%read_input(next_time, "ERA")
+      call u975_next%read_input(next_time, "ERA")
+      call v975_next%read_input(next_time, "ERA")
 
-      call t1000_now%read_input(time)
-      call u1000_now%read_input(time)
-      call v1000_now%read_input(time)
-      call t1000_next%read_input(next_time)
-      call u1000_next%read_input(next_time)
-      call v1000_next%read_input(next_time)
+      call t1000_now%read_input(time, "ERA")
+      call u1000_now%read_input(time, "ERA")
+      call v1000_now%read_input(time, "ERA")
+      call t1000_next%read_input(next_time, "ERA")
+      call u1000_next%read_input(next_time, "ERA")
+      call v1000_next%read_input(next_time, "ERA")
 
 !      print *, "going into INTEGATE with this u",u(m,n,:)
 !      print *, "u1 ",u(m,n,1)
@@ -634,22 +668,19 @@ PROGRAM ABL
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
 
-!            print *, "first t_hPa", hourint(tint, t700_now%get_point(m,n),t700_next%get_point(m,n))
+!           QUESTION: do we want to do this interpolation for sic, sit and snt
+!           too??? At the moment, do that...
+!           ANSWER: ultimately, these will be put in every timestep
+            sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
+            sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
+            snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
 
-!            print *, "before setting ",t_hPa(m,n,12)
             t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
             if (t700_now%get_point(m,n).lt.0) then
               t_hPa(m,n,12) = -999.
-              print *, "tnow set to -999",t700_now%get_point(m,n),t700_next%get_point(m,n)
-              print *, "error: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-              print *, "location ",rlat(m,n),rlon(m,n)," (m,n) XXX ",m,n
             elseif (t700_next%get_point(m,n).lt.0) then
               t_hPa(m,n,12) = -999.
-              print *, "tnext set to -999",t700_now%get_point(m,n),t700_next%get_point(m,n)
-              print *, "error: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-            elseif (t700_next%get_point(m,n).lt.0) then
             endif
-!            print *, "after setting ",t_hPa(m,n,12)
             t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
             if (t750_now%get_point(m,n).lt.0) then
               t_hPa(m,n,11) = -999.
@@ -717,9 +748,6 @@ PROGRAM ABL
               t_hPa(m,n,1) = -999.
             endif
   
-!            print *, "t_hPa before loop ",t_hPa(m,n,:)
-
-!            print *, "first u_hPa", hourint(tint, u700_now%get_point(m,n),u700_next%get_point(m,n))
             u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
             u_hPa(m,n,11) = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
             u_hPa(m,n,10) = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
@@ -746,64 +774,14 @@ PROGRAM ABL
             v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
             v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
 
-!            print *, "u850now",u850_now%get_point(m,n)
-!            print *, "u850 partial",u850 
-!            print *, "u850 next", u850_next%get_point(m,n)
+            print *, "new inputs ",sic,sit,snt, Tsurf(m,n)
 
-!            t700 = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
-!            t750 = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
-!            t775 = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
-!            t800 = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
-!            t825 = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
-!            t875 = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
-!            t900 = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
-!            t925 = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
-!            t950 = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
-!            t975 = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
-!            t1000 = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
-!
-!            u700 = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
-!            u750 = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
-!            u775 = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
-!            u800 = hourint(tint, u800_now%get_point(m,n), u800_next%get_point(m,n))
-!            u825 = hourint(tint, u825_now%get_point(m,n), u825_next%get_point(m,n))
-!            u875 = hourint(tint, u875_now%get_point(m,n), u875_next%get_point(m,n))
-!            u900 = hourint(tint, u900_now%get_point(m,n), u900_next%get_point(m,n))
-!            u925 = hourint(tint, u925_now%get_point(m,n), u925_next%get_point(m,n))
-!            u950 = hourint(tint, u950_now%get_point(m,n), u950_next%get_point(m,n))
-!            u975 = hourint(tint, u975_now%get_point(m,n), u975_next%get_point(m,n))
-!            u1000 = hourint(tint, u1000_now%get_point(m,n), u1000_next%get_point(m,n))
-!
-!            v700 = hourint(tint, v700_now%get_point(m,n), v700_next%get_point(m,n))
-!            v750 = hourint(tint, v750_now%get_point(m,n), v750_next%get_point(m,n))
-!            v775 = hourint(tint, v775_now%get_point(m,n), v775_next%get_point(m,n))
-!            v800 = hourint(tint, v800_now%get_point(m,n), v800_next%get_point(m,n))
-!            v825 = hourint(tint, v825_now%get_point(m,n), v825_next%get_point(m,n))
-!            v875 = hourint(tint, v875_now%get_point(m,n), v875_next%get_point(m,n))
-!            v900 = hourint(tint, v900_now%get_point(m,n), v900_next%get_point(m,n))
-!            v925 = hourint(tint, v925_now%get_point(m,n), v925_next%get_point(m,n))
-!            v950 = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
-!            v975 = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
-!            v1000 = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
-
-!            print *, "this t is ",tint
-!            print *, "current t850,u850,v850 is ",t850,u850,v850
-
+!           Test: set t(1) to be the freezing point, such as a lead
+!            print *, "t(1) before setting ",t(m,n,1)
+!            t(m,n,1) = -2. + 273.75
+!            print *, "t(1) after setting ",t(m,n,1)
             call Integrate_NeXtSIM_ABL( &
               albedo(m,n),                                              & ! Internal or from coupler?
-!              t850_init_HR, u850_init_HR, v850_init_HR, sdlw_init_HR, sdsw_init_HR,                             & ! From file
-!              t700, u700, v700, 
-!              t750, u750, v750, 
-!              t775, u775, v775, 
-!              t800, u800, v800, 
-!              t825, u825, v825, 
-!              t850, u850, v850, 
-!              t875, u875, v875, 
-!              t900, u900, v900, 
-!              t925, u925, v925, 
-!              t950, u950, v950, 
-!              t975, u975, v975, 
-!              t1000, u1000, v1000, 
               t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
               sdlw, sdsw,                                               & ! From file
               slon,                                                     & ! See above
@@ -817,10 +795,11 @@ PROGRAM ABL
               nj,                                                       & ! Number of vertical grid points
               nv,                                                       & ! Always 6?
               dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
+              sic, sit, snt, Tsurf(m,n),    & ! used for conductive heat flux
               u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
               e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
               wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
-              p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n))   ! prognostics
+              p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n))             ! prognostics
 
 
 !            print *, "after INTEGRATION t ",t(m,n,:)

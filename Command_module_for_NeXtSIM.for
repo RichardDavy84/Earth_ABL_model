@@ -22,6 +22,7 @@ c***********************************************************************
       SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t_hPa,u_hPa,v_hPa,lw,sw,
      1    slon,
      1    semis,rlat,z0_in,taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
+     1    sic, sit, snt, Tsurf,   !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht) 
 
@@ -36,6 +37,7 @@ C. t850    - Temperature at 850hPa for nudging the top of the ABL [K]
 C.  Ug     - U wind speed at top of ABL model (850hPa) taken from ERA5 [m/s]
 C.  Vg     - V wind speed at top of ABL model (850hPa) taken from ERA5 [m/s]
 C.  lw     - Net Longwave at the surface, taken from ERA5
+C. VERY IMPORTANT - at moment we are using DOWNWARD lw!!!
 C.  sw     - Net Shortwave at the surface, taken from ERA5
 C.  slon   - Solar longitude [Degrees] - I don't know how you count this in NeXtSIM - (day_number/365.25)*360? 
 C.  semis  - Surface emissivity 
@@ -74,7 +76,7 @@ C------------------------------------------------------------
       REAL zout(3),tout(3),wind,zwind
       CHARACTER*30 dname,fname
       DATA zout,zwind/0.25,0.5,1.,1.3/
-      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht
+      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht,blht_nudge
       REAL*8 forcing
 
       REAL dblht,dL
@@ -105,6 +107,9 @@ c      REAL*8 u_in,v_in
       REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
       REAL zfrc_top,zfrc_bot,zfrc,rif_frac,hloc
 
+c     for conductive heat flux
+      REAL sic, sit, snt, Qia, dQiadT, Tsurf      
+
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
 c  albedo - albedo
@@ -127,6 +132,7 @@ c--------- Data on celestial dynamics
 c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
+      REAL lw_net
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
 c===================Set constants
@@ -169,7 +175,7 @@ c      nplev=12
        hPa(3)=950.
        hPa(2)=975.
        hPa(1)=1000.
-      nudge_above_bl=1. !0.8
+      nudge_above_bl=0.8
       nudge_below_bl=0.2
 cccccc
 c     INTERPOLATE
@@ -192,182 +198,146 @@ c     with height (zm(1) = 0 metres), while hPa decreases (hPa(1) = 700)
 c - messy!!!
       min_Loc=1 !counterintuitive, but need highest of all minima
       max_Loc=nj ! "" ""
-      print *, "before we loop, zm(1) = ",zm(1)," zm_p(1)",zm_at_p(1)
-      print *, "zm_at_p ",zm_at_p
-      print *, "all zm ",zm
-      print *, "t_Pa going into heights ",t_hPa
       do jj=1,nj ! Loop over z levels, find which one each height is in
         u_Pa_to_z(jj)=0.
         v_Pa_to_z(jj)=0.
         t_Pa_to_z(jj)=0.
-        hloc = minloc(abs(zm_at_p-zm(jj)),1) ! This is the closest
-c        print *, "lower and upper zm_at_p ",zm_at_p(1),zm_at_p(12)
+        hloc = minloc(abs(hPa-p(jj)/100.),1) ! This is the closest
         if (zm(jj).lt.40.) then !if close to surface, ignore
-          print *, "updating min_Loc 0 to ",MAX(min_Loc,jj+1)
           min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
-        elseif ((zm(jj)).lt.(zm_at_p(1))) then ! model level < lowest forcing
+        elseif ((p(jj)/100.).gt.(hPa(1))) then ! model level < lowest forcing
           ! do not nudge
-          print *, "updating min_Loc 1 to ",MAX(min_Loc,jj+1)
           min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
-c          print *, "update min_Loc ",min_Loc,jj
-        elseif (zm(jj).gt.zm_at_p(12)) then
+        elseif (p(jj)/100..lt.hPa(12)) then
           ! do not nudge
           max_Loc = MIN(max_Loc,jj) !TODO shoulld this be jj-1?
-c          print *, "update max_Loc ",max_Loc,jj
-        elseif (zm(jj).le.zm_at_p(hloc)) then ! between hloc and hloc-1
+        elseif (p(jj)/100..gt.hPa(hloc)) then ! between hloc and hloc-1
 c         this is because height increases as j increases
           if (hloc.gt.1) then
            ! make sure that zm_at_p(hloc-1) is reasonable
            if (zm_at_p(hloc-1).gt.40.) then
-            zfrc_top=(zm(jj)-zm_at_p(hloc-1))
-            zfrc = zfrc_top/(zm_at_p(hloc)-zm_at_p(hloc-1))
-            print *, "zfrc le ", zfrc
-            print *, "t from hPa 1 ",t_hPa(hloc-1),t_hPa(hloc)
+            zfrc_top=(p(jj)/100.-hPa(hloc-1))
+            zfrc = zfrc_top/(hPa(hloc)-hPa(hloc-1))
+c            print *, "zfrc ",zfrc
             u_Pa_to_z(jj)=u_hPa(hloc-1)+zfrc*(u_hPa(hloc)-u_hPa(hloc-1))
             v_Pa_to_z(jj)=v_hPa(hloc-1)+zfrc*(v_hPa(hloc)-v_hPa(hloc-1))
             t_Pa_to_z(jj)=t_hPa(hloc-1)+zfrc*(t_hPa(hloc)-t_hPa(hloc-1))
            else
-            print *, "updating min_Loc 3 to ",MAX(min_Loc,jj+1)
             min_Loc = MAX(min_Loc,jj+1)
            endif
           else
             ! in this situation, we are closer to surface than input
             ! data, so cannot interpolate
-            print *, "updating min_Loc 2 to ",MAX(min_Loc,jj+1)
             min_Loc = MAX(min_Loc,jj+1)
-c            print *, "update min_Loc 2 ",hloc,jj
           endif
-        elseif (zm(jj).ge.zm_at_p(hloc)) then
+        elseif (p(jj)/100..le.hPa(hloc)) then
           if (hloc.lt.nplev) then
-           zfrc=(zm(jj)-zm_at_p(hloc))/(zm_at_p(hloc+1)-zm_at_p(hloc))
-           print *, "zfrc gt ",zfrc
-           print *, "t from hPa 2 ",t_hPa(hloc),t_hPa(hloc+1)
+           zfrc=(p(jj)/100.-hPa(hloc))/(hPa(hloc+1)-hPa(hloc))
            u_Pa_to_z(jj)=u_hPa(hloc)+zfrc*(u_hPa(hloc+1)-u_hPa(hloc))
            v_Pa_to_z(jj)=v_hPa(hloc)+zfrc*(v_hPa(hloc+1)-v_hPa(hloc))
            t_Pa_to_z(jj)=t_hPa(hloc)+zfrc*(t_hPa(hloc+1)-t_hPa(hloc))
           else
            ! in this situation, we are above input
            ! data, so cannot interpolate
-c           print *, "update max_Loc 2 ",hloc,jj
            max_Loc = MIN(max_Loc,jj)
           endif
         endif
       enddo
-      print *, "u_on_z ",u_Pa_to_z
-      print *, "v_on_z ",v_Pa_to_z
-      print *, "t_on_z ",t_Pa_to_z
 
-c      Loc_non_zero = minloc(Locations>1,1)
-c      print *, "check nonzero loc ",Loc_non_zero,u_hPa(Loc_non_zero)
-c      u_Pa_to_z(Locations(Loc_non_zero))=u_hPa(Loc_non_zero)
-c      do np=Loc_non_zero,nplev
+c      do jj=1,nj ! Loop over z levels, find which one each height is in
+c        u_Pa_to_z(jj)=0.
+c        v_Pa_to_z(jj)=0.
+c        t_Pa_to_z(jj)=0.
+c        hloc = minloc(abs(zm_at_p-zm(jj)),1) ! This is the closest
+c        print *, "hloc, jj, min",hloc,jj,minval(abs(zm_at_p-zm(jj)),1)
+c        print *, "zm jj, zm_at_p sides",zm(jj)
+c        print *, zm_at_p
+c        print *, "selected p ",p(jj), "p ERA ",hPa(hloc)
+c        print *, "reminder of p ",p
+cc        print *, "lower and upper zm_at_p ",zm_at_p(1),zm_at_p(12)
+c        if (zm(jj).lt.40.) then !if close to surface, ignore
+c          ! print *, "updating min_Loc 0 to ",MAX(min_Loc,jj+1)
+c          min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
+c        elseif ((zm(jj)).lt.(zm_at_p(1))) then ! model level < lowest forcing
+c          ! do not nudge
+c          ! print *, "updating min_Loc 1 to ",MAX(min_Loc,jj+1)
+c          min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
+cc          print *, "update min_Loc ",min_Loc,jj
+c        elseif (zm(jj).gt.zm_at_p(12)) then
+c          ! do not nudge
+c          max_Loc = MIN(max_Loc,jj) !TODO shoulld this be jj-1?
+cc          print *, "update max_Loc ",max_Loc,jj
+c        elseif (zm(jj).le.zm_at_p(hloc)) then ! between hloc and hloc-1
+cc         this is because height increases as j increases
+c          print *, "zm(jj) le",zm(jj),jj,zm_at_p(hloc),zm_at_p(hloc-1)
+c          if (hloc.gt.1) then
+c           ! make sure that zm_at_p(hloc-1) is reasonable
+c           if (zm_at_p(hloc-1).gt.40.) then
+c            zfrc_top=(zm(jj)-zm_at_p(hloc-1))
+c            zfrc = zfrc_top/(zm_at_p(hloc)-zm_at_p(hloc-1))
+c            ! print *, "zfrc le ", zfrc
+c            ! print *, "t from hPa 1 ",t_hPa(hloc-1),t_hPa(hloc)
+c            print *, "zfrc ",zfrc
+c            u_Pa_to_z(jj)=u_hPa(hloc-1)+zfrc*(u_hPa(hloc)-u_hPa(hloc-1))
+c            v_Pa_to_z(jj)=v_hPa(hloc-1)+zfrc*(v_hPa(hloc)-v_hPa(hloc-1))
+c            t_Pa_to_z(jj)=t_hPa(hloc-1)+zfrc*(t_hPa(hloc)-t_hPa(hloc-1))
+c           else
+c            ! print *, "updating min_Loc 3 to ",MAX(min_Loc,jj+1)
+c            min_Loc = MAX(min_Loc,jj+1)
+c           endif
+c          else
+c            ! in this situation, we are closer to surface than input
+c            ! data, so cannot interpolate
+c            ! print *, "updating min_Loc 2 to ",MAX(min_Loc,jj+1)
+c            min_Loc = MAX(min_Loc,jj+1)
+cc            print *, "update min_Loc 2 ",hloc,jj
+c          endif
+c        elseif (zm(jj).ge.zm_at_p(hloc)) then
+c          print *, "zm(jj) le",zm(jj),jj,zm_at_p(hloc),zm_at_p(hloc-1)
+c          if (hloc.lt.nplev) then
+c           zfrc=(zm(jj)-zm_at_p(hloc))/(zm_at_p(hloc+1)-zm_at_p(hloc))
+c           print *, "zfrc ",zfrc
+c           ! print *, "zfrc gt ",zfrc
+c           ! print *, "t from hPa 2 ",t_hPa(hloc),t_hPa(hloc+1)
+c           u_Pa_to_z(jj)=u_hPa(hloc)+zfrc*(u_hPa(hloc+1)-u_hPa(hloc))
+c           v_Pa_to_z(jj)=v_hPa(hloc)+zfrc*(v_hPa(hloc+1)-v_hPa(hloc))
+c           t_Pa_to_z(jj)=t_hPa(hloc)+zfrc*(t_hPa(hloc+1)-t_hPa(hloc))
+c          else
+c           ! in this situation, we are above input
+c           ! data, so cannot interpolate
+cc           print *, "update max_Loc 2 ",hloc,jj
+c           max_Loc = MIN(max_Loc,jj)
+c          endif
+c        endif
+c      enddo
 
-ccc HCRc     quickly initialise
-ccc HCR      do jj=1,nj
-ccc HCR        u_Pa_to_z(jj)=0.
-ccc HCR        v_Pa_to_z(jj)=0.
-ccc HCR        t_Pa_to_z(jj)=0.
-ccc HCR      enddo
-ccc HCR      Loc_non_zero=1
-ccc HCRc      print *, "what is u_Pa_to_z element 1 to 5?",u_Pa_to_z(1:5)
-ccc HCRc      print *, "what is t_Pa_to_z element 1 to 5?",t_Pa_to_z(1:5)
-ccc HCR      t_Pa_to_z(Locations(Loc_non_zero))=t_hPa(Loc_non_zero)
-ccc HCR      u_Pa_to_z(Locations(Loc_non_zero))=u_hPa(Loc_non_zero)
-ccc HCR      v_Pa_to_z(Locations(Loc_non_zero))=v_hPa(Loc_non_zero)
-ccc HCR      do np=2,nplev
-ccc HCR        t_Pa_to_z(Locations(np))=t_hPa(np)
-ccc HCR        u_Pa_to_z(Locations(np))=u_hPa(np)
-ccc HCR        v_Pa_to_z(Locations(np))=v_hPa(np)
-ccc HCRc        print *, "setting this nloc as Location ",Locations(np)
-ccc HCR        if(Locations(np).gt.Locations(np-1)) then
-ccc HCR          min_Loc=Locations(np-1)
-ccc HCR          max_Loc=Locations(np)
-ccc HCR        else
-ccc HCR          min_Loc=Locations(np)
-ccc HCR          max_Loc=Locations(np-1)
-ccc HCR        endif
-ccc HCRc        print *, "we have the following min max ",min_Loc,max_Loc
-ccc HCRc        print *, "WHAT IS t_hPa looknig liike? ",t_hPa(np),t_hPa(np-1)
-ccc HCR        if(max_Loc-min_Loc>1) then
-ccc HCRc       must interpolate    
-ccc HCR         if(max_Loc-min_Loc==2) then
-ccc HCRc          only need to interpolate once
-ccc HCR           nloc=Locations(np-1)+1 ! nj index that we need to interp to
-ccc HCR           zfrc_top=(zm(nloc)-zm(min_Loc))/abs(zm(max_Loc)-zm(min_Loc))
-ccc HCR           t_Pa_to_z(nloc)=t_hPa(np-1)+zfrc*(t_hPa(np)-t_hPa(np-1))
-ccc HCR           u_Pa_to_z(nloc)=u_hPa(np-1)+zfrc*(u_hPa(np)-u_hPa(np-1))
-ccc HCR           v_Pa_to_z(nloc)=v_hPa(np-1)+zfrc*(v_hPa(np)-v_hPa(np-1))
-ccc HCRc           print *, "setting this nloc ",nloc
-ccc HCRc           print *, "zfrc ",zfrc
-ccc HCRc           print *, "u_hpa_to_z(nloc) ",u_Pa_to_z(nloc)
-ccc HCRc           print *, "u_hpa either side ",u_hPa(np),u_hPa(np-1)
-ccc HCR         else
-ccc HCR          do nloc=min_Loc+1,max_Loc-1
-ccc HCRc           print *, "potential zfrc top ",(zm(nloc)-Locations(np-1))
-ccc HCRc           print *, "potential zfrc bot ",abs(zm(max_Loc)-zm(min_Loc))
-ccc HCRc           print *,(zm(nloc)-Locations(np-1))/abs(zm(max_Loc)-zm(min_Loc))
-ccc HCR           zfrc=(zm(nloc)-zm(min_Loc))/abs(zm(max_Loc)-zm(min_Loc))
-ccc HCR           !   zfrc=zm(nloc)/abs(zm(Locations(np))-zm(Locations(np-1)))
-ccc HCR           t_Pa_to_z(nloc)=t_hPa(np-1)+zfrc*(t_hPa(np)-t_hPa(np-1))
-ccc HCR           u_Pa_to_z(nloc)=u_hPa(np-1)+zfrc*(u_hPa(np)-u_hPa(np-1))
-ccc HCR           v_Pa_to_z(nloc)=v_hPa(np-1)+zfrc*(v_hPa(np)-v_hPa(np-1))
-ccc HCRc           print *, "setting this nloc ",nloc
-ccc HCRc           print *, "zfrc ",zfrc
-ccc HCRc           print *, "u_hpa_to_z(nloc) ",u_Pa_to_z(nloc)
-ccc HCRc           print *, "u_hpa either side ",u_hPa(np),u_hPa(np-1)
-ccc HCR          enddo
-ccc HCR         endif
-ccc HCR        endif
-ccc HCR      enddo
-ccc HCRc      print *, "u_hPa",u_hPa
-ccc HCRc      print *, "u_hPa_z",u_Pa_to_z  
-ccc HCR        
-ccc HCRc      2) if hPa var is greater than  the highest pressure in the model,do not nudge
-ccc HCRc       print *, "pref ",100.*hPa(np)
-ccc HCRc       print *, "p0 ",p0
-ccc HCRc       height_hPa=(((100.*hPa(np)/p0)**(1./5.257)-1.)*(t_hPa(np)))/0.0065 ! Use hypsometric formula to convert T850 to temperature at the nearest height level
-ccc HCRc       print *, "looping,np=",np,",hPa ",hPa(np),"t_hPa(np)",t_hPa(np)
-ccc HCRc       if(abs(height_hPa).lt.20) then
-ccc HCRc         print *, "not forcing for np = ",np
-ccc HCRc       endif
-ccc HCRc       if(abs(height_hPa).gt.20) then
-ccc HCRc           Location = minloc(abs(zm-abs(height_hPa)),1)               ! Find the nearest height level that matches
-ccc HCRc           print *, "nudging  ",hPa(np)," hPa at  height ", height_hPa
-ccc HCRc           print *, "identified height is ",zm(Location)
-ccc HCRc           print *, "Location", Location
-ccc HCR
-ccc HCRc      TIME TO NUDGE
-ccc HCRc      Only nudge between values where we had points!
-ccc HCR        if(Locations(np).gt.Locations(np-1)) then
-ccc HCR          min_Loc=Locations(1)
-ccc HCR          max_Loc=Locations(12)
-ccc HCR        else
-ccc HCR          min_Loc=Locations(12)
-ccc HCR          max_Loc=Locations(1)
-ccc HCR        endif
-      print *, "nudging between z ",min_Loc,max_Loc
-      print *, "t before ",t(min_Loc),t(max_Loc)
-      print *, "t Pa ",t_Pa_to_z(min_Loc),t_Pa_to_z(max_Loc)
+      print *, "t(1) before nudging",t(1)
+      blht_nudge = blht
+      print *, "blht for nudging ",blht
       do jj=min_Loc,max_Loc
-        if(zm(jj)<1000.) then ! boundary layer (hardcoded for now!)
+        if(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
            nudge_fac=nudge_below_bl
            t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
            u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
            v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
-        elseif(zm(jj)>=1000.) then ! boundary layer (hardcoded for now!)
+        elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
            nudge_fac=nudge_above_bl
            t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
            u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
            v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
         endif
       enddo
+      ! Finally, for any z values above ERA5 inputs, set u and v to be
+      ! the last ERA5 values
       do jj=max_Loc,nj
         u(jj)=u_Pa_to_z(max_Loc)
         v(jj)=v_Pa_to_z(max_Loc)
       enddo
-      print *, "quick check of t profile ",t
-      print *, "quick check of u profile ",u
-      print *, "quick check of v profile ",v
+
+      print *, "t(1) after nudging",t(1)
+      ! print *, "quick check of t profile ",t
+      ! print *, "quick check of u profile ",u
+      ! print *, "quick check of v profile ",v
 
 c       height_t850=(((85000./p0)**(1./5.257)-1.)*(t850))/0.0065     ! Use hypsometric formula to convert T850 to temperature at the nearest height level
 c       Location = minloc(abs(zm+height_t850),1)   HCRfix              ! Find the nearest height level that matches
@@ -388,7 +358,7 @@ c       print *, "after setting: "
 c       print *, "t, u, v ",t(Location-1),u(Location-1),v(Location-1)
 c       print *, "t, u, v ",t(Location),u(Location),v(Location)
 c       print *, "t, u, v ",t(Location+1),u(Location+1),v(Location+1)
- 
+
 c---------Constants used in similarity functions
         betam =5.0                   ! Others : 6.00      4.7      5.0
         betah =5.0                   !          8.21      4.7      5.0
@@ -413,9 +383,9 @@ c      call initdist(ir,nj,scaled,zd,F1,rad)                  !Define initial di
 c      call valcalc(ir,nj,taur,F1,zd,rad,value)               !Define val used in dust calculations  !
 c      call Opdepth(ir,nj,taur,F1,zd,zm,rad,tvis,tvisk,value) !Define initial optical depth profile  !
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      do i=1,nj
-         tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
-      end do
+c      do i=1,nj
+c         tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
+c      end do
 
 
 c---------Initialization array used in solving matrix
@@ -545,9 +515,28 @@ c          sw=(1.-albedo1)*swi                ! sw net rad at slant sfc, w/m2
 
 	  h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
           e0=rho*latent*wq(1)                ! sfc latent heat flux w/m2
+          print *, "! h0 and in !",h0,rho,cp,wt(1)
 
-          gflux=lw+sw-h0-e0                  ! net surface energy flux
+          print *, "gflux in ",lw_net,sw,h0,e0
+          print *, "gflux wt(1) and rho",wt(1),rho
 
+c          gflux=lw+sw-h0-e0                  ! net surface energy flux
+c         HERE lw is downward, NOT net - so need to compute!
+c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
+          lw_net = lw - sbc*0.996*(t(1)**4)
+          gflux=lw_net+sw-h0-e0                  ! net surface energy flux
+c         HERE lw is downward, NOT net - so need to compute!
+          print *, "typical gflux ",gflux
+          print *, "lw_net,sw,h0,e0",lw_net,sw,h0,e0
+
+c         Heather added - for sea ice
+c         In nextsim, Q_lw = Qlw_out - Q_lw_in     where Qlw_out = 4*0.996*sbc*SST**4
+c                     Q_sw = -Qsw_in*(1-I_0)*(1-albedo)  
+c                     Q_lh = drag_ice_t*rhoair*Lsub*wspeed*(sphumi-sphuma), Lsub = Lf + Lv0 - 240. -290.*Tsurf - 4*Tsurf*Tsurf
+c                     Q_sh = drag_ice_t*rhoair*(cpa+sphuma*cpv)*wspeed*(Tsurf-tair)
+!          gflux = 0.996*sbc*t(1)**4 - lw                        &   ! lw out - lw in
+!            1      + sw*(1 - ALBEDO)
+!            2      +  
 c---------Calculating Boundary-Layer Height
               ss05=.05*SQRT(uw(1)*uw(1)+vw(1)*vw(1))
               ssz1=0.
@@ -573,8 +562,8 @@ c       just for printiing!
           rif_frac=MAX(rif_frac,rif(j))
         enddo
         do j=2,nj
-          IF( (rif(j).ge.0.15).and.(rif(j-1).le.0.15) ) THEN
-            rif_frac=(0.15-rif(j-1))/(rif(j)-rif(j-1))
+          IF( (rif(j).ge.0.2).and.(rif(j-1).lt.0.2) ) THEN
+            rif_frac=(0.2-rif(j-1))/(rif(j)-rif(j-1))
             rif_blht=zm(j-1)+rif_frac*(zm(j)-zm(j-1))
             GOTO 203
           ENDIF
@@ -591,6 +580,21 @@ c        CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
 c        t(1)=tsoil(1)
 c        betag=grav/t(1)
 
+cc++++++++++++++Calculating surface temperature over ice
+c       Before we go any further, we need to get an updated t(0) based on the new sea ice state from nextsim
+c        Qia = lw + sw + ... !Need to do (1-alpha) for sw?
+c        dQiadT = 
+
+c        Qia = gflux ! do i need to include other terms? I think some are missing
+        dQiadT = 4.*0.996*0.0000000567*(t(1)**3)
+        print *, "i tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
+        print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
+        call thermoIce0(ds,sic,sit,snt,gflux,dQiadT,Tsurf)    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c        t(1)=Tsurf
+c        betag=grav/t(1)
+        print *, "o tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
+        print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
+
 c++++++++++++++ Calculating dust dynamics
 c      CALL Dust(ir,nj,ustar,zm,ttd,tvis,Conc1,Km,t,taur
 c     1     ,rad,zd,zmd,scaled,dzetad,dlamb,z0,ds,F1,grav,p0,tvisk,value)
@@ -604,7 +608,12 @@ c          tice(i)=tice(i)+tice(i+1)
 c       end do
 c
 c      ttd=ttd+ds
-
+c      print *, "and now at end"
+c      print *, "u_on_z ",u_Pa_to_z
+c      print *, "u_on_p ",u_hPa
+c      print *, "zm_at_p ",zm_at_p
+c      print *, "p ",p
+c
 
 c
       return

@@ -218,7 +218,5 @@ c      open(11,file='TSOILINI.dat')
 c        call stempout(tsoil,zsoil,ni,11)
 c      close(11)
 
-
-
       return
       END

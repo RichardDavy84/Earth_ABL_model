@@ -21,7 +21,7 @@ c***********************************************************************
 
       SUBROUTINE Initialize_NeXtSIM_ABL(albedo,u_in,v_in,slon,semis,
      1    rlat,z0_in,taur,p0,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
-     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in) 
+     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld) 
 
 C-------------! Inputs needed from NeXtSIM / ERA5 are:
 C.  albedo - Surface albedo
@@ -70,13 +70,15 @@ C-------------------------------------------------------------
  
       REAL*8 dtvis(nj),tvisk(ir)
       REAL*8 wc(ir,nj)
-      REAL*8 conc1(ir,nj),conc2(ir,nj),dlamb,dzetad,p0,q0,t0
+      REAL*8 conc1(ir,nj),conc2(ir,nj),dlamb,dzetad
+      REAL p0,q0,t0
       REAL*8 zd(nj),rad(ir),scaled(ir),zmd(nj),F(ir,nj),F1(ir,nj)
       REAL*8 value
 
       REAL*8 tice(nj)
 
-      REAL*8 albedo,rlat,slon,semis
+      REAL*8 slon
+      REAL rlat, albedo, semis
 
 c---------Declaration of variables and arrays
 c    angv - angle velocity
@@ -99,7 +101,11 @@ c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
 
-      REAL*8 u_in,v_in,ustar_in,z0_in,ds_in
+      REAL u_in,v_in
+c      INTEGER np,nplev
+c      PARAMETER(nplev=12)
+c      REAL u_in(nplev),v_in(nplev)
+      REAL ustar_in,z0_in,ds_in
 
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
@@ -110,12 +116,16 @@ c===================Set constants
       q(1)=q0
       t(1)=t0
 
-      ug = u_in
-      vg = v_in
+c ,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
+c     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in) 
+
+      ug = u_in ! not needed for profile initialisation, but needed for ekman
+      vg = v_in ! not needed for profile initialisation, but needed for ekman
       ustar = ustar_in
-      z0_in = z0_in
-      ds_in = ds_in
-                
+      z0 = z0_in
+c      ds_in = ds_in
+      ds = ds_in
+
       grav=9.807    ! Some more general constants 
       vk=.4         ! von Karman constant
       alpha=.3      ! Constant from the closure for calculating dissipation of TKE
@@ -151,14 +161,19 @@ c---------Calculate grid mesh (zm,zt)
         rlb=100             ! =300 for nj=121, =100 for nj=241, =80 for nj=361
         z0c=.01              ! =0.1 (Roughness for coordinate tranform)
         zref=0
-        ztop=4000. ! Was 30000, but can be changed
+        ztop=2500. ! Was 30000, but can be changed
+c        ztop=4000. ! Was 30000, but can be changed
       eta1=alog(zref/z0c+1.)+zref/rlb
       deta=(alog(ztop/z0c+1.)+ztop/rlb)/(nj-1.)
 
         CALL subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
 
 c---------Calculating initial u* etc from Geostrophic Drag Laws
+        print *, "z0 going into subgdl is",z0
         CALL subgdl(fc,z0,angle,aconst,ustar)
+        print *, "ustar coming out of subgdl is",ustar
+        ustar_in = ustar
+        ! CALL subgdl(fc,z0,angle,aconst,ustar)
 
 ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 c Define initial dust properties                                                                     ! This is a set of routines for having dynamic aerosols,
@@ -174,11 +189,14 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
          tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
       end do
 
-
+        print *, "ug and vg before subprof ",ug,vg
 c---------Calculating initial profiles
         call subprof(p,q,qi,tvis,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,kh,km,
      1      tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,nj)
           wlo=-vk*betag*wt(1)/ustar**3
+
+        print *, "initiall u profile",u
+        print *, "initiall v profile",v
 c
 c          dzeta=alog(.2/z0+1.)/(ni-1.)
 c        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
@@ -199,8 +217,6 @@ c---------Output initial data and profiles
 c      open(11,file='TSOILINI.dat')
 c        call stempout(tsoil,zsoil,ni,11)
 c      close(11)
-
-
 
       return
       END

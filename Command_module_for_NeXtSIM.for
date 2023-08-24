@@ -20,6 +20,7 @@ c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
       SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t_hPa,u_hPa,v_hPa,lw,sw,
+     1    ntlw, ntsw, mslhf, msshf,
      1    slon,
      1    semis,rlat,z0_in,taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
      1    sic, sit, snt, Tsurf,   !HCRadd
@@ -132,7 +133,8 @@ c--------- Data on celestial dynamics
 c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
-      REAL lw_net
+      REAL lw_net, sw_net
+      REAL ntsw, ntlw, mslhf, msshf
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
 c===================Set constants
@@ -210,7 +212,7 @@ c - messy!!!
           min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
         elseif (p(jj)/100..lt.hPa(12)) then
           ! do not nudge
-          max_Loc = MIN(max_Loc,jj) !TODO shoulld this be jj-1?
+          max_Loc = MIN(max_Loc,jj-1) !TODO shoulld this be jj-1?
         elseif (p(jj)/100..gt.hPa(hloc)) then ! between hloc and hloc-1
 c         this is because height increases as j increases
           if (hloc.gt.1) then
@@ -239,11 +241,21 @@ c            print *, "zfrc ",zfrc
           else
            ! in this situation, we are above input
            ! data, so cannot interpolate
-           max_Loc = MIN(max_Loc,jj)
+           max_Loc = MIN(max_Loc,jj-1)
           endif
         endif
       enddo
 
+      print *, "NEED TO MAKE THIS MORE ROBUST"
+      do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
+        if (t_Pa_to_z(jj).eq.0.) then
+          u_Pa_to_z(jj)=u_hPa(12)
+          v_Pa_to_z(jj)=v_hPa(12)
+          t_Pa_to_z(jj)=t_hPa(12)
+        endif
+      enddo
+      print *, "forcing from ",min_Loc," to ",max_Loc
+      print *, "with t ",t_Pa_to_z
 c      do jj=1,nj ! Loop over z levels, find which one each height is in
 c        u_Pa_to_z(jj)=0.
 c        v_Pa_to_z(jj)=0.
@@ -311,9 +323,11 @@ c          endif
 c        endif
 c      enddo
 
-      print *, "t(1) before nudging",t(1)
+c      print *, "t(1) before nudging",t(1)
+c      print *, "t all before nudging",t
+c      print *, "min max loc",min_Loc,max_Loc
       blht_nudge = blht
-      print *, "blht for nudging ",blht
+c      print *, "blht for nudging ",blht
       do jj=min_Loc,max_Loc
         if(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
            nudge_fac=nudge_below_bl
@@ -329,12 +343,16 @@ c      enddo
       enddo
       ! Finally, for any z values above ERA5 inputs, set u and v to be
       ! the last ERA5 values
+c      print *, "t all mid nudging",t
+c      print *, "t from ERA pressure",t_Pa_to_z
       do jj=max_Loc,nj
         u(jj)=u_Pa_to_z(max_Loc)
         v(jj)=v_Pa_to_z(max_Loc)
+        t(jj)=t_Pa_to_z(max_Loc)
       enddo
+c      print *, "t all after nudging",t
 
-      print *, "t(1) after nudging",t(1)
+c      print *, "t(1) after nudging",t(1)
       ! print *, "quick check of t profile ",t
       ! print *, "quick check of u profile ",u
       ! print *, "quick check of v profile ",v
@@ -438,10 +456,18 @@ c---------Calculating surface fluxes using Monin-Obukhov similarity
     !      ha=(1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
 	  sh=cc*COS(ha)+ss                       ! Sin of solar height angle
 c==============Calculating hydrostatic pressure (mb)
+c        print *, "p before hydro ",p
+c        print *, "inputs",p(nj-1),t(nj),grav,rgas,deta,dedzt(nj-1)
+c        print *, "pout",p(nj)
+c	print *, p(nj-1)-(p(nj-1)/t(nj))*(grav/rgas)*(deta/dedzt(nj-1))
+c	print *, p(nj-1)-p(nj-1)*rgas*deta/(t(nj)*grav*dedzt(nj-1))
+c	print *, p(nj-1)-p(nj-1)/t(nj)*grav/rgas*deta/dedzt(nj-1)
+c        print *, "all t ",t
 	do j=2,nj
 	  p(j)=p(j-1)-p(j-1)/t(j)*grav/rgas*deta/dedzt(j-1)
           turbhr(j)=t(j)                         !  Store T for output
         enddo
+c        print *, "p after hydro ",p
 c==============Calculating boundary layer dynamics
 c---------Converting temperature to potential temperature
         do j=1,nj
@@ -460,6 +486,7 @@ c---------Calculating finite difference matrix and lu decomposition
 c---------Solving tridiagonal equations
         CALL solve(psi,alfa,beta,nv,nj)
 c---------Updating the solution
+        print *, "theta now b4",theta(1),theta(2)
         do 110 j=1,nj
           u(j)    =psi(j,1)
           v(j)    =psi(j,2)
@@ -469,6 +496,7 @@ c---------Updating the solution
           e(j)    =MAX(psi(j,6),emin)
           ep(j)=(alpha*e(j))**1.5/tld(j)
  110    CONTINUE
+        print *, "theta now af",theta(1),theta(2)
 c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
@@ -514,20 +542,30 @@ c          sw=(1.-albedo1)*swi                ! sw net rad at slant sfc, w/m2
 	    rho=100.*(p(1)+p(2))/rgas/(t(1)+t(2))
 
 	  h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
+          print *, "h0 inputs ",rho,cp,wt(1)
           e0=rho*latent*wq(1)                ! sfc latent heat flux w/m2
-          print *, "! h0 and in !",h0,rho,cp,wt(1)
-
-          print *, "gflux in ",lw_net,sw,h0,e0
-          print *, "gflux wt(1) and rho",wt(1),rho
 
 c          gflux=lw+sw-h0-e0                  ! net surface energy flux
 c         HERE lw is downward, NOT net - so need to compute!
 c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
           lw_net = lw - sbc*0.996*(t(1)**4)
-          gflux=lw_net+sw-h0-e0                  ! net surface energy flux
-c         HERE lw is downward, NOT net - so need to compute!
+          sw_net = (1.-albedo1)*sw
+ccc          gflux=(lw_net+sw_net-h0-e0)                  ! net surface energy flux. NOTE: lw, sw +ve down, h0, e0 +ve up
           print *, "typical gflux ",gflux
           print *, "lw_net,sw,h0,e0",lw_net,sw,h0,e0
+c         NOW ACTUALLY USE INPUTS FROM ERA
+ccc          gflux = (ntlw+ntsw-mslhf-msshf) ! test 2: all fluxes from ERA
+ccc          gflux = (ntlw+ntsw-h0-e0)       ! test 3: net lw and sw from ERA, h0 and e0 from ABL
+c          gflux = (lw_net+ntsw-mslhf-msshf) ! test 4 and 5: lw_net from ABL, rest from ERA
+c         THIS IS THE CURRENT BEST ONE        
+          gflux = (lw_net+ntsw+mslhf+msshf) ! test 7: lw_net from ABL, rest from ERA, CORRECT SIGNS (i.e. all are downward, so are summed)
+          print *, "FLUX DIFFERENCES: gflux",gflux
+          print *, "FLUX DIFFERENCES: lw",lw_net,ntlw
+          print *, "FLUX DIFFERENCES: sw",sw_net,ntsw
+          print *, "FLUX DIFFERENCES: h0",h0,msshf
+          print *, "FLUX DIFFERENCES: e0",e0,mslhf
+
+c         HERE lw is downward, NOT net - so need to compute!
 
 c         Heather added - for sea ice
 c         In nextsim, Q_lw = Qlw_out - Q_lw_in     where Qlw_out = 4*0.996*sbc*SST**4
@@ -587,11 +625,17 @@ c        dQiadT =
 
 c        Qia = gflux ! do i need to include other terms? I think some are missing
         dQiadT = 4.*0.996*0.0000000567*(t(1)**3)
+c        dQiadT = 4.*0.996*0.0000000567*(Tsurf**3)
         print *, "i tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
-        print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
-        call thermoIce0(ds,sic,sit,snt,gflux,dQiadT,Tsurf)    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
-c        t(1)=Tsurf
-c        betag=grav/t(1)
+        print *, "Tsurf b4 is (K,C)",Tsurf,Tsurf-273.15
+        Tsurf=t(1)
+        print *, "Tsurf b4 t(1) is (K,C)",Tsurf,Tsurf-273.15
+        print *, "NOTE: TRYING -ve gflux"
+        call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c        call thermoIce0(ds,sic,sit,snt,gflux,dQiadT,t(1))    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+        t(1)=Tsurf
+c        t(1) = t(1) ! + 0.01 !test
+        betag=grav/t(1)
         print *, "o tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
         print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
 

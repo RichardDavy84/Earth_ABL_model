@@ -158,10 +158,10 @@ c       rl0=.00027*ug/fc
 
 
 c---------Calculate grid mesh (zm,zt)
-        rlb=100             ! =300 for nj=121, =100 for nj=241, =80 for nj=361
-        z0c=.01              ! =0.1 (Roughness for coordinate tranform)
+        rlb=80             ! =300 for nj=121, =100 for nj=241, =80 for nj=361
+        z0c=.1              ! =0.1 (Roughness for coordinate tranform)
         zref=0
-        ztop=2500. ! Was 30000, but can be changed
+        ztop=3000. ! Was 30000, but can be changed
 c        ztop=4000. ! Was 30000, but can be changed
       eta1=alog(zref/z0c+1.)+zref/rlb
       deta=(alog(ztop/z0c+1.)+ztop/rlb)/(nj-1.)

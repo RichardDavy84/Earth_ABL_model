@@ -82,9 +82,11 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First are nudging values at 850 hPA
   TYPE(input_var) :: u850_now,v850_now,t850_now,sdlw_now,sdsw_now
+  TYPE(input_var) :: ntlw_now,ntsw_now,mslhf_now,msshf_now
   TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
+  TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
-  REAL :: u850, v850, t850, sdlw, sdsw
+  REAL :: u850, v850, t850, sdlw, sdsw, ntlw, ntsw,mslhf,msshf
   REAL, ALLOCATABLE :: sic, sit, snt !for conductive heat flux
   REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
@@ -155,7 +157,7 @@ PROGRAM ABL
   ! Initialise the grid
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! TODO: These four parameters should be read from a namelist
-  fname = "grid.nc"
+  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc"
   lon_name = "plon"
   lat_name = "plat"
   mask_name = "mask"
@@ -305,6 +307,18 @@ PROGRAM ABL
   call sdsw_now%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call sdsw_next%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
+  call ntlw_now%init("msnlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call ntlw_next%init("msnlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+
+  call ntsw_now%init("msnswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call ntsw_next%init("msnswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+
+  call mslhf_now%init("mslhf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call mslhf_next%init("mslhf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+
+  call msshf_now%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call msshf_next%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+
   print *, "initialising si from Moorings"
   call sic_now%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_now%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
@@ -393,6 +407,9 @@ PROGRAM ABL
 
       print *, "about to INITIALIZE!!!"
 
+      print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW"
+      albedo(m,n) = 0.63
+
 !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
       call Initialize_NeXtSIM_ABL( &
         albedo(m,n),                                                    & ! Internal or from coupler?
@@ -405,7 +422,9 @@ PROGRAM ABL
         0.001,                                                            & ! constant z0 for now...Internal or from coupler?
 !        z0(m,n),                                                        & ! Internal or from coupler?
         taur(m,n),                                                      & ! Internal variable
-        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
+!        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
+        p0%get_point(m,n), q0%get_point(m,n), & ! From file
+        t0%get_point(m,n),        & ! From file
         nj,                                                             & ! Number of vertical grid points
         nv,                                                             & ! Always 6?
         dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
@@ -532,14 +551,29 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !  HCR add: initialise values for conductive heat flux!
+!  for m,n loop
+!  Tsurf_old = t(m,n,1)
+!  gflux = lw_net + sw_net + mslhf + msshf 
+!  dQiadT = 4.*0.996*0.0000000567*(t(m,n,1)**3)
+!  call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)
+!  if (abs(Tsurf-Tsurf_old).lt.1e2) then
+!    WE HAVE INITIALISED TSURF  
+
   Tsurf = t(:,:,1)  
-  print *, "initialising Tsurf",t(:,:,1),-2.+273.15
-  do m = 1, mgr
-    do n = 1, ngr
-      print *, "setting Tsurf"
-      Tsurf(m,n) = -2. + 273.15
-    enddo
-  enddo
+!  print *, "initialising Tsurf",t(:,:,1),-2.+273.15
+!  do m = 1, mgr
+!    do n = 1, ngr
+!      print *, "setting Tsurf"
+!      Tsurf(m,n) = -2. + 273.15
+!    enddo
+!  enddo
+  call sic_now%read_input(time, "Moorings")
+  call sit_now%read_input(time, "Moorings")
+  call snt_now%read_input(time, "Moorings")
+  next_time = time + timedelta(hours=1)
+  call sic_next%read_input(next_time, "Moorings")
+  call sit_next%read_input(next_time, "Moorings")
+  call snt_next%read_input(next_time, "Moorings")
 
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
@@ -552,18 +586,26 @@ PROGRAM ABL
       call v850_now%read_input(time, "ERA")
       call sdlw_now%read_input(time, "ERA")
       call sdsw_now%read_input(time, "ERA")
-      call sic_now%read_input(time, "Moorings")
-      call sit_now%read_input(time, "Moorings")
-      call snt_now%read_input(time, "Moorings")
+      call ntlw_now%read_input(time, "ERA")
+      call ntsw_now%read_input(time, "ERA")
+      call mslhf_now%read_input(time, "ERA")
+      call msshf_now%read_input(time, "ERA")
+!      call sic_now%read_input(time, "Moorings")
+!      call sit_now%read_input(time, "Moorings")
+!      call snt_now%read_input(time, "Moorings")
 
       call t850_next%read_input(next_time, "ERA")
       call u850_next%read_input(next_time, "ERA")
       call v850_next%read_input(next_time, "ERA")
       call sdlw_next%read_input(next_time, "ERA")
       call sdsw_next%read_input(next_time, "ERA")
-      call sic_next%read_input(next_time, "Moorings")
-      call sit_next%read_input(next_time, "Moorings")
-      call snt_next%read_input(next_time, "Moorings")
+      call ntlw_next%read_input(next_time, "ERA")
+      call ntsw_next%read_input(next_time, "ERA")
+      call mslhf_next%read_input(next_time, "ERA")
+      call msshf_next%read_input(time, "ERA")
+!      call sic_next%read_input(next_time, "Moorings")
+!      call sit_next%read_input(next_time, "Moorings")
+!      call snt_next%read_input(next_time, "Moorings")
 
       print *, "READING t700 t12 NOW input"
       call t700_now%read_input(time, "ERA")
@@ -667,13 +709,20 @@ PROGRAM ABL
             ! v850 = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
+            ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
+            ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
+            mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
+            msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
 
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
 !           ANSWER: ultimately, these will be put in every timestep
-            sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
-            sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
-            snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
+!            snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
+!            sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
+!            sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
+             snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
+             sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
+             sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
 
             t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
             if (t700_now%get_point(m,n).lt.0) then
@@ -784,6 +833,7 @@ PROGRAM ABL
               albedo(m,n),                                              & ! Internal or from coupler?
               t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
               sdlw, sdsw,                                               & ! From file
+              ntlw, ntsw, mslhf, msshf,                                 &
               slon,                                                     & ! See above
               semis(m,n),                                               & ! Internal or from coupler?
               rlat(m,n),                                                &

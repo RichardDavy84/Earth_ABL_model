@@ -1,0 +1,16 @@
+# Local settings for the Makefile
+
+FC = ifort
+# MODFLAG should be -J gfort and -module for ifort
+# It's for the option to tell the compiler where to place module files
+MODFLAG = -module
+
+tmp_dir=/cluster/home/hregan/ABL/Earth_ABL_model #local_settings
+
+HDF_ROOT=/cluster/software/HDF5/1.10.1-intel-2018a
+INC_HDF = -I${HDF_ROOT}/include
+LIB_HDF = -L${HDF_ROOT}/lib -lhdf5 -L${HDF_ROOT}/lib -lhdf5_hl
+
+FFLAGS = -g -I${tmp_dir} # -real-size 64 
+F90FLAGS = -g -I${tmp_dir} # -real-size 64
+LDFLAGS = -L${tmp_dir} ${LIB_HDF} ${INC_HDF}

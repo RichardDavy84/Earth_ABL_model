@@ -20,8 +20,11 @@ c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
       SUBROUTINE Initialize_NeXtSIM_ABL(albedo,u_in,v_in,slon,semis,
-     1    rlat,z0_in,taur,p0,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
-     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld) 
+     1    rlat,z0_in,
+     2    z0_ice,
+     3    taur,p0,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
+     4    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,ni,
+     5    dedzs,tsoil,zsoil,dzeta,ice_snow_thick) 
 
 C-------------! Inputs needed from NeXtSIM / ERA5 are:
 C.  albedo - Surface albedo
@@ -41,7 +44,7 @@ C.  nj,nv,dedzm,dedzt,zm,zt,	u,v,t,q,qi,	e,ep,uw,vw,wt,wq,wqi,km,kh,ustar
 C-------------------------------------------------------------
 
       IMPLICIT none
-      INTEGER nj,nv,nw,ir
+      INTEGER ni,nj,nv,nw,ir
       PARAMETER(nw=0,ir=121)
       include "consta.h"
       include "constb.h"
@@ -80,6 +83,8 @@ C-------------------------------------------------------------
       REAL*8 slon
       REAL rlat, albedo, semis
 
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta
+
 c---------Declaration of variables and arrays
 c    angv - angle velocity
 c      cp - gas heat capacity at constant pressure
@@ -106,6 +111,7 @@ c      INTEGER np,nplev
 c      PARAMETER(nplev=12)
 c      REAL u_in(nplev),v_in(nplev)
       REAL ustar_in,z0_in,ds_in
+      REAL z0_ice,ice_snow_thick
 
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
@@ -169,9 +175,7 @@ c        ztop=4000. ! Was 30000, but can be changed
         CALL subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
 
 c---------Calculating initial u* etc from Geostrophic Drag Laws
-        print *, "z0 going into subgdl is",z0
         CALL subgdl(fc,z0,angle,aconst,ustar)
-        print *, "ustar coming out of subgdl is",ustar
         ustar_in = ustar
         ! CALL subgdl(fc,z0,angle,aconst,ustar)
 
@@ -189,17 +193,14 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
          tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
       end do
 
-        print *, "ug and vg before subprof ",ug,vg
 c---------Calculating initial profiles
         call subprof(p,q,qi,tvis,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,kh,km,
      1      tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,nj)
           wlo=-vk*betag*wt(1)/ustar**3
 
-        print *, "initiall u profile",u
-        print *, "initiall v profile",v
-c
+        call compute_dzeta(ice_snow_thick,z0_ice,dzeta,ni)
 c          dzeta=alog(.2/z0+1.)/(ni-1.)
-c        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0,ni)
+        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0_ice,ni)
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')

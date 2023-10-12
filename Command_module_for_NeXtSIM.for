@@ -22,10 +22,13 @@ c***********************************************************************
       SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t_hPa,u_hPa,v_hPa,lw,sw,
      1    ntlw, ntsw, mslhf, msshf,
      1    slon,
-     1    semis,rlat,z0_in,taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
-     1    sic, sit, snt, Tsurf,   !HCRadd
+     1    semis,rlat,z0_in,
+     1    z0_ice,
+     1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
+     1    sic, sit, snt, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
-     1    rif_blht) 
+     1    rif_blht,ni,
+     1    dedzs,tsoil,zsoil,dzeta) 
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
 c     1    v750,t775,u775,v775,t800,u800,v800,t825,u825,v825,t850,
@@ -54,7 +57,7 @@ C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the
 C------------------------------------------------------------
 
       IMPLICIT none
-      INTEGER nj,nv,nw,ir
+      INTEGER nj,nv,nw,ir, ni
       PARAMETER(nw=0,ir=121)
       include "consta.h"
       include "constb.h"
@@ -110,6 +113,7 @@ c      REAL*8 u_in,v_in
 
 c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,z0_ice
 
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
@@ -187,8 +191,6 @@ c     STEP 1: create a new array of Locations (shape 12)
       do np=1,nplev
        height_hPa=(((100.*hPa(np)/p0)**(1./5.257)-1.)*(t_hPa(np)))/0.0065 ! Use hypsometric formula to convert T850 to temperature at the nearest height level
        if (t_hPa(np).le.0.) then
-         print *, "STOOOOOP! t_hPa",t_hPa(np),"h",height_hPa,"np",np
-         print *, "p at first level ",p(np)
          zm_at_p(np)=0.
        else
          zm_at_p(np)=abs(height_hPa)
@@ -254,74 +256,6 @@ c            print *, "zfrc ",zfrc
           t_Pa_to_z(jj)=t_hPa(12)
         endif
       enddo
-      print *, "forcing from ",min_Loc," to ",max_Loc
-      print *, "with t ",t_Pa_to_z
-c      do jj=1,nj ! Loop over z levels, find which one each height is in
-c        u_Pa_to_z(jj)=0.
-c        v_Pa_to_z(jj)=0.
-c        t_Pa_to_z(jj)=0.
-c        hloc = minloc(abs(zm_at_p-zm(jj)),1) ! This is the closest
-c        print *, "hloc, jj, min",hloc,jj,minval(abs(zm_at_p-zm(jj)),1)
-c        print *, "zm jj, zm_at_p sides",zm(jj)
-c        print *, zm_at_p
-c        print *, "selected p ",p(jj), "p ERA ",hPa(hloc)
-c        print *, "reminder of p ",p
-cc        print *, "lower and upper zm_at_p ",zm_at_p(1),zm_at_p(12)
-c        if (zm(jj).lt.40.) then !if close to surface, ignore
-c          ! print *, "updating min_Loc 0 to ",MAX(min_Loc,jj+1)
-c          min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
-c        elseif ((zm(jj)).lt.(zm_at_p(1))) then ! model level < lowest forcing
-c          ! do not nudge
-c          ! print *, "updating min_Loc 1 to ",MAX(min_Loc,jj+1)
-c          min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
-cc          print *, "update min_Loc ",min_Loc,jj
-c        elseif (zm(jj).gt.zm_at_p(12)) then
-c          ! do not nudge
-c          max_Loc = MIN(max_Loc,jj) !TODO shoulld this be jj-1?
-cc          print *, "update max_Loc ",max_Loc,jj
-c        elseif (zm(jj).le.zm_at_p(hloc)) then ! between hloc and hloc-1
-cc         this is because height increases as j increases
-c          print *, "zm(jj) le",zm(jj),jj,zm_at_p(hloc),zm_at_p(hloc-1)
-c          if (hloc.gt.1) then
-c           ! make sure that zm_at_p(hloc-1) is reasonable
-c           if (zm_at_p(hloc-1).gt.40.) then
-c            zfrc_top=(zm(jj)-zm_at_p(hloc-1))
-c            zfrc = zfrc_top/(zm_at_p(hloc)-zm_at_p(hloc-1))
-c            ! print *, "zfrc le ", zfrc
-c            ! print *, "t from hPa 1 ",t_hPa(hloc-1),t_hPa(hloc)
-c            print *, "zfrc ",zfrc
-c            u_Pa_to_z(jj)=u_hPa(hloc-1)+zfrc*(u_hPa(hloc)-u_hPa(hloc-1))
-c            v_Pa_to_z(jj)=v_hPa(hloc-1)+zfrc*(v_hPa(hloc)-v_hPa(hloc-1))
-c            t_Pa_to_z(jj)=t_hPa(hloc-1)+zfrc*(t_hPa(hloc)-t_hPa(hloc-1))
-c           else
-c            ! print *, "updating min_Loc 3 to ",MAX(min_Loc,jj+1)
-c            min_Loc = MAX(min_Loc,jj+1)
-c           endif
-c          else
-c            ! in this situation, we are closer to surface than input
-c            ! data, so cannot interpolate
-c            ! print *, "updating min_Loc 2 to ",MAX(min_Loc,jj+1)
-c            min_Loc = MAX(min_Loc,jj+1)
-cc            print *, "update min_Loc 2 ",hloc,jj
-c          endif
-c        elseif (zm(jj).ge.zm_at_p(hloc)) then
-c          print *, "zm(jj) le",zm(jj),jj,zm_at_p(hloc),zm_at_p(hloc-1)
-c          if (hloc.lt.nplev) then
-c           zfrc=(zm(jj)-zm_at_p(hloc))/(zm_at_p(hloc+1)-zm_at_p(hloc))
-c           print *, "zfrc ",zfrc
-c           ! print *, "zfrc gt ",zfrc
-c           ! print *, "t from hPa 2 ",t_hPa(hloc),t_hPa(hloc+1)
-c           u_Pa_to_z(jj)=u_hPa(hloc)+zfrc*(u_hPa(hloc+1)-u_hPa(hloc))
-c           v_Pa_to_z(jj)=v_hPa(hloc)+zfrc*(v_hPa(hloc+1)-v_hPa(hloc))
-c           t_Pa_to_z(jj)=t_hPa(hloc)+zfrc*(t_hPa(hloc+1)-t_hPa(hloc))
-c          else
-c           ! in this situation, we are above input
-c           ! data, so cannot interpolate
-cc           print *, "update max_Loc 2 ",hloc,jj
-c           max_Loc = MIN(max_Loc,jj)
-c          endif
-c        endif
-c      enddo
 
 c      print *, "t(1) before nudging",t(1)
 c      print *, "t all before nudging",t
@@ -486,7 +420,6 @@ c---------Calculating finite difference matrix and lu decomposition
 c---------Solving tridiagonal equations
         CALL solve(psi,alfa,beta,nv,nj)
 c---------Updating the solution
-        print *, "theta now b4",theta(1),theta(2)
         do 110 j=1,nj
           u(j)    =psi(j,1)
           v(j)    =psi(j,2)
@@ -496,7 +429,6 @@ c---------Updating the solution
           e(j)    =MAX(psi(j,6),emin)
           ep(j)=(alpha*e(j))**1.5/tld(j)
  110    CONTINUE
-        print *, "theta now af",theta(1),theta(2)
 c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
@@ -539,35 +471,27 @@ c---------Computing short wave irradiation on slant ground
 c        CALL swisg(dsw,ha,rlat,sdec,sdir,sh,swi)
 c	  lw=dlw-sbc*semis*t(1)**4           ! LW net radiation at surface
 c          sw=(1.-albedo1)*swi                ! sw net rad at slant sfc, w/m2
-	    rho=100.*(p(1)+p(2))/rgas/(t(1)+t(2))
+	    rho=1.*(p(1)+p(2))/rgas/(t(1)+t(2))
+c	    rho=100.*(p(1)+p(2))/rgas/(t(1)+t(2))
 
 	  h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
-          print *, "h0 inputs ",rho,cp,wt(1)
           e0=rho*latent*wq(1)                ! sfc latent heat flux w/m2
 
-c          gflux=lw+sw-h0-e0                  ! net surface energy flux
 c         HERE lw is downward, NOT net - so need to compute!
 c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
+          print *, "INPUTS TO LW",lw,sbc,t(1)
           lw_net = lw - sbc*0.996*(t(1)**4)
           sw_net = (1.-albedo1)*sw
-ccc          gflux=(lw_net+sw_net-h0-e0)                  ! net surface energy flux. NOTE: lw, sw +ve down, h0, e0 +ve up
-          print *, "typical gflux ",gflux
-          print *, "lw_net,sw,h0,e0",lw_net,sw,h0,e0
-c         NOW ACTUALLY USE INPUTS FROM ERA
-ccc          gflux = (ntlw+ntsw-mslhf-msshf) ! test 2: all fluxes from ERA
-ccc          gflux = (ntlw+ntsw-h0-e0)       ! test 3: net lw and sw from ERA, h0 and e0 from ABL
-c          gflux = (lw_net+ntsw-mslhf-msshf) ! test 4 and 5: lw_net from ABL, rest from ERA
-c         THIS IS THE CURRENT BEST ONE        
-          gflux = (lw_net+ntsw+mslhf+msshf) ! test 7: lw_net from ABL, rest from ERA, CORRECT SIGNS (i.e. all are downward, so are summed)
-          print *, "FLUX DIFFERENCES: gflux",gflux
-          print *, "FLUX DIFFERENCES: lw",lw_net,ntlw
-          print *, "FLUX DIFFERENCES: sw",sw_net,ntsw
-          print *, "FLUX DIFFERENCES: h0",h0,msshf
-          print *, "FLUX DIFFERENCES: e0",e0,mslhf
+c          gflux = (lw_net+ntsw+mslhf+msshf) 
+          gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
 
-c         HERE lw is downward, NOT net - so need to compute!
+          print *, "FFF",lw_net,sw_net,h0,e0,tsoil(1)
+c          print *, "FLUX DIFFERENCES: gflux",gflux
+c          print *, "FLUX DIFFERENCES: lw",lw_net,ntlw
+c          print *, "FLUX DIFFERENCES: sw",sw_net,ntsw
+c          print *, "FLUX DIFFERENCES: h0",h0,msshf
+c          print *, "FLUX DIFFERENCES: e0",e0,mslhf
 
-c         Heather added - for sea ice
 c         In nextsim, Q_lw = Qlw_out - Q_lw_in     where Qlw_out = 4*0.996*sbc*SST**4
 c                     Q_sw = -Qsw_in*(1-I_0)*(1-albedo)  
 c                     Q_lh = drag_ice_t*rhoair*Lsub*wspeed*(sphumi-sphuma), Lsub = Lf + Lv0 - 240. -290.*Tsurf - 4*Tsurf*Tsurf
@@ -614,9 +538,36 @@ c       just for printiing!
      3                        /alog((zm(j+1)/z0+1.)/(zm(j)/z0+1.))
 
 cc++++++++++++++Calculating soil temperature
-c        CALL soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,ds)
-c        t(1)=tsoil(1)
-c        betag=grav/t(1)
+c       we don't need to do this update of dzeta every time step! ...
+c        ice_snow_thick = (sit + snt)/sic
+c        CALL compute_dzeta(ice_snow_thick,z0_ice,dzeta,ni) ! this is now done just before the loop
+
+        if ((sit + snt).eq.0.) then
+          t(1) = 271.15
+        else
+          print *, "inputs to soiltdm"
+          print *, "dedzs"
+          print *, dedzs
+          print *, "tsoil"
+          print *, tsoil
+          print *, "alternative, t(1) ",t(1)
+          print *, "zsoil"
+          print *, zsoil
+          print *, "dzeta"
+          print *, dzeta
+          print *, "snt"
+          print *, snt
+          print *, "gflux"
+          print *, gflux
+          print *, "ds"
+          print *, ds
+          print *, "ni"
+          print *, ni
+          CALL soiltdm(dedzs,tsoil,zsoil,dzeta,snt,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
+          t(1)=tsoil(1)
+        endif
+        betag=grav/t(1)
+        print *, "TSOIL_NOW ",tsoil
 
 cc++++++++++++++Calculating surface temperature over ice
 c       Before we go any further, we need to get an updated t(0) based on the new sea ice state from nextsim
@@ -624,20 +575,22 @@ c        Qia = lw + sw + ... !Need to do (1-alpha) for sw?
 c        dQiadT = 
 
 c        Qia = gflux ! do i need to include other terms? I think some are missing
-        dQiadT = 4.*0.996*0.0000000567*(t(1)**3)
+cc        dQiadT = 4.*0.996*0.0000000567*(t(1)**3)
 c        dQiadT = 4.*0.996*0.0000000567*(Tsurf**3)
-        print *, "i tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
-        print *, "Tsurf b4 is (K,C)",Tsurf,Tsurf-273.15
-        Tsurf=t(1)
-        print *, "Tsurf b4 t(1) is (K,C)",Tsurf,Tsurf-273.15
-        print *, "NOTE: TRYING -ve gflux"
-        call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+cc        print *, "i tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
+c        print *, "Tsurf b4 is (K,C)",Tsurf,Tsurf-273.15
+cc        Tsurf=t(1)
+cc        print *, "Tsurf b4 t(1) is (K,C)",Tsurf,Tsurf-273.15
+c        print *, "NOTE: TRYING -ve gflux"
+cc        call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
 c        call thermoIce0(ds,sic,sit,snt,gflux,dQiadT,t(1))    ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
-        t(1)=Tsurf
+cc        print *, "this should be new Tsurf",Tsurf
+cc        print *, "spin t(1) from to ",t(1),Tsurf
+cc        t(1)=Tsurf
 c        t(1) = t(1) ! + 0.01 !test
-        betag=grav/t(1)
-        print *, "o tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
-        print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
+cc        betag=grav/t(1)
+cc        print *, "o tIce0,sic,t,sn,gflx,dQiadT",sic,sit,snt,gflux,dQiadT
+c        print *, "Tsurf is (K,C)",Tsurf,Tsurf-273.15
 
 c++++++++++++++ Calculating dust dynamics
 c      CALL Dust(ir,nj,ustar,zm,ttd,tvis,Conc1,Km,t,taur

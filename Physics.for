@@ -38,14 +38,14 @@ c----------------------------------------------------------------------=
 c   To solve the diffusion equation at FIVE levels within the ground   =
 c              by using the implicit Crank-Nicholson scheme            =
 c=======================================================================
-      SUBROUTINE soiltdm(dedzs,tsoil,zsoil,dzeta,gflux,dt)
+      SUBROUTINE soiltdm(dedzs,tsoil,zsoil,dzeta,snow_thick,gflux,dt,ni)
       IMPLICIT none
       INTEGER i,ni
-      PARAMETER (ni=11)
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,gflux,dt
+c      PARAMETER (ni=11)
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,snow_thick,gflux,dt
 c---------Internal variables
       REAL a(ni),b(ni),c(ni),r(ni)
-      REAL dzeta2,rdif,rhoc,rlam,n,nv
+      REAL dzeta2,rdif,rhoc,rlam,n,nv,rhoc2,rlam2
 
 c          open (UNIT=55,FILE='q.DAT')
 c          read (55,*) n
@@ -55,10 +55,13 @@ c      PRINT*,n,nv
 c      rlam=MAX(0.172,419*EXP(0-((alog10(12.1*((.395/nv)**4.05)))+2.7)))
 c      rhoc=1470000*(1-0.395)+nv*4186000
 
-      DATA rhoc,rlam/2400000,1.75/  !.404,.38  !800000.,.153125        ! .120125/,.18/      !1849600,1.05  1186600,.63
+      DATA rhoc,rlam/910000,1.3/  !Ice   .404,.38  !800000.,.153125        ! .120125/,.18/      !1849600,1.05  1186600,.63
 c              2.96,2.2     2.268,1.9 garrat       2640000,2.7   !!2700000,2.025!!     2100000,1.68
+      DATA rhoc2,rlam2/150000,0.3/ ! Snow
         dzeta2=dzeta*dzeta
 	rdif=.75         !.75 => implicit scheme, 0 => explicit scheme  Pielke 1984 MMM p290
+ccccccccccc
+cccccccccc
 c---------Calculating coefficient of triangle matrix
 c.........First grid point
         i=1
@@ -66,7 +69,11 @@ c.........First grid point
       b(i)=1.
       c(i)=-1.
 c      r(i)=-gflux*zsoil(i+1)/rlam
-      r(i)=-gflux/rlam*dzeta*2./(dedzs(i)+dedzs(i+1))
+      if (abs(zsoil(i)).lt.snow_thick) then ! We're in the snow layer - use snow settings
+        r(i)=-gflux/rlam2*dzeta*2./(dedzs(i)+dedzs(i+1))
+      else
+        r(i)=-gflux/rlam*dzeta*2./(dedzs(i)+dedzs(i+1))
+      endif
 c.........Interior grid points
       do 100 i=2,ni-1
 c	zzm=1./(.5*(zsoil(i+1)-zsoil(i-1))*(zsoil(i)-zsoil(i-1)))
@@ -76,23 +83,41 @@ c      b(i)=1./dt+rdif*rlam/rhoc*(zzm+zzp)
 c      c(i)=-rdif*rlam/rhoc*zzp
 c      r(i)=tsoil(i)/dt+(1.-rdif)*rlam/rhoc*((tsoil(i+1)-tsoil(i))*zzp
 c     1                                     -(tsoil(i)-tsoil(i-1))*zzm)
-      a(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i-1))
-      b(i)=1./dt+rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*( dedzs(i)+dedzs(i-1)
-     1                                              +dedzs(i)+dedzs(i+1)
-     2                                              )
-      c(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i+1))
-      r(i)=tsoil(i)/dt+(1.-rdif)*rlam/rhoc*dedzs(i)/dzeta2*
+       if (abs(zsoil(i)).lt.snow_thick) then ! we are in the snow layer
+         a(i)=-rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i-1))
+         b(i)=1./dt+rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*( dedzs(i)
+     1                                 +dedzs(i-1)+dedzs(i)+dedzs(i+1) )
+         c(i)=-rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i+1))
+         r(i)=tsoil(i)/dt+(1.-rdif)*rlam2/rhoc2*dedzs(i)/dzeta2*
      1                .5*( (tsoil(i+1)-tsoil(i))*(dedzs(i)+dedzs(i+1))
      2                    -(tsoil(i)-tsoil(i-1))*(dedzs(i)+dedzs(i-1)) )
+       else
+         a(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i-1))
+         b(i)=1./dt+rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*( dedzs(i)
+     1                                 +dedzs(i-1)+dedzs(i)+dedzs(i+1) )
+         c(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i+1))
+         r(i)=tsoil(i)/dt+(1.-rdif)*rlam/rhoc*dedzs(i)/dzeta2*
+     1                .5*( (tsoil(i+1)-tsoil(i))*(dedzs(i)+dedzs(i+1))
+     2                    -(tsoil(i)-tsoil(i-1))*(dedzs(i)+dedzs(i-1)) )
+       endif
  100  continue
 c.........Last grid point
 	i=ni
       a(i)=0.
       b(i)=1.
       c(i)=0.
-      r(i)=tsoil(ni)
+      r(i)=tsoil(ni) ! This should be -2 C as bottom of sea ice
+c      print *, "IN SOILTDM, TSOIL B4",tsoil
 c---------Solving matrix for the solution
+c      print *, "INPUTS "
+c      print *, "a ",a
+c      print *, "b ",b
+c      print *, "c ",c
+c      print *, "r ",r
+c      print *, "tsoil ",tsoil
+c      print *, "ni ",ni
 	call strid(a,b,c,r,tsoil,ni)
+c      print *, "IN SOILTDM, TSOIL AF",tsoil
 c
       return
       END
@@ -111,14 +136,17 @@ c
       if(b(1).eq.0.) stop 'tridag: rewrite equations'
         bet=b(1)
         u(1)=r(1)/bet
+c      print *, "STRID 1 ",u(1),bet,r(1)
       do 10 j=2,n
         gam(j)=c(j-1)/bet
         bet=b(j)-a(j)*gam(j)
           if(bet.eq.0.) stop 'tridag failed'
         u(j)=(r(j)-a(j)*u(j-1))/bet
+        print *, "STRID j ",j,u(j),gam(j)
  10   continue
       do 20 j=n-1,1,-1
         u(j)=u(j)-gam(j+1)*u(j+1)
+c        print *, "STRID j2 ",j,u(j),gam(j)
  20   continue
 c
       return
@@ -263,9 +291,35 @@ c
       ENDDO
       DO i=2,ni
         dedzs(i)=1./(zsoil(i)+z0)
-        tsoil(i)=t0-(t0-298.)*zsoil(i)/zsoil(ni)        !298,223
+        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
       ENDDO
 c
+      end subroutine
+c======================================================================*
+c    Subroutine SUBSOILT_dedzs --- calculating initial ice grid        *
+c======================================================================*
+      SUBROUTINE subsoilt_dedzs(dedzs,zsoil,dzeta,z0,ni)
+      INTEGER ni,i
+      REAL dedzs(ni),zsoil(ni),dzeta,z0
+c
+        zsoil(1)=0.
+      DO i=2,ni
+        zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.)
+      ENDDO
+      DO i=2,ni
+        dedzs(i)=1./(zsoil(i)+z0)
+c        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
+      ENDDO
+c
+      end subroutine
+c======================================================================*
+c     Subroutine COMPUTE_dzeta --- calculating dzeta from ice thickness*
+c======================================================================*
+      subroutine compute_dzeta(ice_snow_thickness,z0_ice,dzeta,ni)
+      REAL ice_snow_thickness,z0_ice,dzeta
+
+      dzeta=alog(ice_snow_thickness/z0_ice+1.)/(ni-1.)
+
       end subroutine
 c======================================================================*
 c     Subroutine SUBPROF  --- calculating various initial profiles     *
@@ -294,7 +348,6 @@ c---------Ekman Layer solutions for U and V
 c        u   (j)=ug*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j)))
 c        v   (j)=    ug*exp(-aconst*zm(j))*sin(aconst*zm(j))
 cccc
-c        print *, "ug and vg for initialising in subprof ",ug,vg
 
         uin=SQRT(ug**2+vg**2)*(1.-exp(-aconst*zm(j))*cos(aconst*zm(j))) !HCR change
         vin=SQRT(ug**2+vg**2)*exp(-aconst*zm(j))*sin(aconst*zm(j)) !HCR change
@@ -413,13 +466,11 @@ c---------Calculating the derivative fields of mean quantities
         dvdz(nj)=dvdz(nj-1)
         dthdz(nj)=dthdz(nj-1)
 c==============E-l Turbulence CLosure
-      print *, "dthdz in",theta(2),theta(1),dedzt(1),deta
 c---------Calculating the flux Richardson number
       do 20 j=nw+1,nj
         rif(j)=betag*dthdz(j)/pr/
 c     1              (dudz(j)*dudz(j)+dvdz(j)*dvdz(j))
      1              (dudz(j)*dudz(j)+dvdz(j)*dvdz(j)+1.e-12)
-c        print *, "rif before min ",rif(j)
         rif(j)=min(rifc,rif(j))
  20   continue
 c---------Calculating the Obukhov length
@@ -492,7 +543,6 @@ c          km(j)=tl(j)*tl(j)*sqrt(shear)*frim
 c          kh(j)=tl(j)*tl(j)*sqrt(shear)*frih
 c      end do
 c---------Calculating the turbulent fluxes
-      print *, "wt(1) before set ",wt(1)
       do 200 j=nw+1,nj-1
   	uw(j)=-km(j)*dudz(j)
 	vw(j)=-km(j)*dvdz(j)
@@ -505,8 +555,6 @@ c---------Calculating the turbulent fluxes
         wt(nj)=wt(nj-1)
         wq(nj)=wq(nj-1)
         wqi(nj)=wqi(nj-1)
-      print *, "wt(1) after",wt(1),kh(1),dthdz(1)
-      print *, "dthdz(1)",theta(2),theta(1),dedzt(1),deta
 
 c
       end subroutine
@@ -1426,23 +1474,14 @@ ccc          hi_old = hi
           hs = snt/sic
 
 c ------- 2) calculate Tsurf and conductive flux through ice
-          print *, "into Qic",ks,Tbot-Tsurf,hs+ks*hi/ki
           Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki)
-          print *, "in thermoIce0: Qic, Qia,diff ",Qic,Qia,Qic-Qia     
-          print *, "denom 1",ks/(hs+ks*hi/ki)
-          print *, "denom 2",dQiadT
-          print *, "denom ",ks/(hs+ks*hi/ki) + dQiadT
-          print *, "so ",(Qic - Qia)," div ",(ks/(hs+ks*hi/ki) + dQiadT)
 c          Tsurf = Tsurf + 0.001
-          print *, "ACTUAL",(Qic - Qia)/(ks/(hs+ks*hi/ki) + dQiadT)
           Tsurf = Tsurf + (Qic - Qia)/(ks/(hs+ks*hi/ki) + dQiadT)
 c         Limit Tsurf to the freezing point of snow or ice
           if ( hs > 0. ) then
               Tsurf = MIN(0. + tempCtoK, Tsurf)
-              print *, "limit, hs>0",0.+tempCtoK,Tsurf
           else
               Tsurf = MIN(Tfr_ice, Tsurf)
-              print *, "limit, hs=0",Tfr_ice,Tsurf
           endif
 
 cccc ------- 3) Melt and growth (do not implement initially)

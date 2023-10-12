@@ -50,8 +50,8 @@ PROGRAM ABL
   !------------------------------------------------------------
 
   IMPLICIT none
-  INTEGER nj,nv,ni
-  PARAMETER(nj=31,nv=6,ni=11)
+  INTEGER nj,nv,ni,ncat,n_si_cat
+  PARAMETER(nj=31,nv=6,ni=15,n_si_cat=2)
 !  PARAMETER(nj=31,nv=6,ni=11)
 
   INTEGER, PARAMETER :: dbl=8
@@ -62,7 +62,7 @@ PROGRAM ABL
   ! Time information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   type(datetime) :: time, next_time, time0, time1
-  type(timedelta) :: dt
+  type(timedelta) :: dt, coupling_dt
 
   ! Variables for the three dimensional model
   ! Grid points of the model are in a 2D array
@@ -87,7 +87,7 @@ PROGRAM ABL
   TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
   REAL :: u850, v850, t850, sdlw, sdsw, ntlw, ntsw,mslhf,msshf
-  REAL, ALLOCATABLE :: sic, sit, snt !for conductive heat flux
+  REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
   REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
   TYPE(input_var) :: u900_now, u925_now, u950_now, u975_now, u1000_now
@@ -116,6 +116,8 @@ PROGRAM ABL
   INTEGER nplev !,np, Location
   PARAMETER(nplev=12)
 !  REAL hPa(nplev)
+  REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, z0_ice, z0
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -127,8 +129,18 @@ PROGRAM ABL
 
   ! Surface only
   ! REAL(KIND=4), DIMENSION(:,:), ALLOCATABLE :: albedo, ustar, semis, z0, taur
-  REAL, DIMENSION(:,:), ALLOCATABLE :: albedo,ustar,semis,z0,taur,blht,rif_blht
+  REAL, DIMENSION(:,:), ALLOCATABLE :: albedo,ustar,semis,taur,blht,rif_blht
 
+  REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: &
+   u_tmp,v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
+    wq_tmp, wqi_tmp, km_tmp, kh_tmp, p_tmp,tld_tmp
+  REAL, DIMENSION(:,:,:), ALLOCATABLE :: blht_tmp, rif_blht_tmp, ustar_tmp, ice_snow_thick
+  REAL, DIMENSION(:), ALLOCATABLE :: &
+   u_tmp2,v_tmp2,t_tmp2,q_tmp2,qi_tmp2,e_tmp2,ep_tmp2,uw_tmp2,vw_tmp2,wt_tmp2, &
+    wq_tmp2, wqi_tmp2, km_tmp2, kh_tmp2, p_tmp2,tld_tmp2
+  REAL :: blht_tmp2, rif_blht_tmp2, ustar_tmp2
+  REAL :: area_conc, area_conc_ow
+  INTEGER :: do_merge, do_tiling, coupling_seconds
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -137,7 +149,8 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds
+  INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
+  INTEGER :: coupling_ds, coupling_cnt
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
   REAL :: ha, tint
 !  INTEGER, PARAMETER :: hoursec = 86400
@@ -150,8 +163,10 @@ PROGRAM ABL
 
   ! Initialization parameters (for compatibility with REAL*8 in function)
   !REAL(KIND=dbl) :: u_in, v_in, p_in, q_in, t_in
-  mnt_out = 60
+  mnt_out = 3 !5
   hr_out = 1
+
+  do_tiling = 1 ! This is for if we want to tile the output or not
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialise the grid
@@ -183,14 +198,48 @@ PROGRAM ABL
   endif
   time = time0
 
+  coupling_seconds=read_coupling_timestep("./coupling_timestep.cfg")
+  print *, "coupling_seconds ",coupling_seconds
+  ! coupling_dt=timedelta(seconds=900)
+  coupling_dt=timedelta(seconds=coupling_seconds)
+  coupling_ds=coupling_dt%getSeconds()
+  coupling_cnt=0
+  
+
+  if (do_tiling.eq.0) then
+    ncat = 1 ! check this works...
+  else
+    ncat = n_si_cat
+  endif
+
   !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
-  ALLOCATE(albedo, semis, z0, taur, blht, rif_blht, mold = ustar)
+  ALLOCATE(albedo, semis, taur, blht, rif_blht, mold = ustar)
+  ALLOCATE(z0(mgr,ngr,ncat)) !! NEW
+  ALLOCATE(z0_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
   ALLOCATE(tld(mgr,ngr,nj))
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
+  print *, "allocated 1"
+
+  ALLOCATE(u_tmp(mgr,ngr,nj,ncat))
+  ALLOCATE(v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
+    wq_tmp, wqi_tmp, km_tmp, kh_tmp, p_tmp,tld_tmp, mold = u_tmp)
+  print *, "allocated 2"
+  ALLOCATE(u_tmp2(nj))
+  ALLOCATE(v_tmp2,t_tmp2,q_tmp2,qi_tmp2,e_tmp2,ep_tmp2,uw_tmp2,vw_tmp2, &
+    wt_tmp2,wq_tmp2,wqi_tmp2,km_tmp2,kh_tmp2,p_tmp2,tld_tmp2,mold=u_tmp2)
+  print *, "allocated 3"
+  ALLOCATE(blht_tmp(mgr,ngr,ncat))
+  ALLOCATE(rif_blht_tmp,ustar_tmp,ice_snow_thick,mold=blht_tmp)
+  print *, "allocated 4"
+
   ALLOCATE(t_hPa(mgr,ngr,nplev))
   ALLOCATE(u_hPa,v_hPa,mold=t_hPa)
+
+  ALLOCATE(dedzs(mgr,ngr,ni,ncat))
+  ALLOCATE(tsoil,zsoil,mold=dedzs)
+  print *, "allocated 5"
 
   ! Initialise input files and read initial field
   ! example code for p0
@@ -319,7 +368,6 @@ PROGRAM ABL
   call msshf_now%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call msshf_next%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
 
-  print *, "initialising si from Moorings"
   call sic_now%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_now%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_now%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
@@ -330,17 +378,16 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  call sic_now%read_input(time, "Moorings")
+  call sit_now%read_input(time, "Moorings")
+  call snt_now%read_input(time, "Moorings")
+
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
-  print *, "read p0 input"
   call t0%read_input(time0, "ERA")
-  print *, "read t0 input"
   call q0%read_input(time0, "ERA")
-  print *, "read q0 input"
   call u850_now%read_input(time0, "ERA")
-  print *, "read u850 input"
   call v850_now%read_input(time0, "ERA")
-  print *, "read v850 input"
   do m = 1, mgr
     do n = 1, ngr
 
@@ -354,7 +401,7 @@ PROGRAM ABL
       print *, "slon ",slon
       print *, "semis ",semis(m,n)
       print *, "rlat ",rlat(m,n)
-      print *, "z0 ",z0(m,n)
+      print *, "z0 ",z0(m,n,:)
       print *, "taur ",taur(m,n)
       print *, "p0 ",p0%get_point(m,n)
 
@@ -407,8 +454,38 @@ PROGRAM ABL
 
       print *, "about to INITIALIZE!!!"
 
+
       print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW"
       albedo(m,n) = 0.63
+
+      !!! Hack for now
+      do n_si = 1,ncat
+        z0(m,n,n_si) = 0.001 ! this is the surface roughness I believe
+        if (n_si.lt.ncat) then
+          sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
+          ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
+          if (sic(m,n,n_si).gt.0.) then
+            snt(m,n,n_si) = 0.2/sic(m,n,n_si) !snt_now%get_point(m,n)
+            sit(m,n,n_si) = 2./sic(m,n,n_si) !sit_now%get_point(m,n)
+          else
+            snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
+            sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
+          endif
+        else
+          snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
+          sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
+          sic(m,n,n_si) = 0. !sic_now%get_point(m,n)
+        endif
+      enddo
+
+!!    Settings for "soil" code
+      z0_ice(m,n,:) = z0(m,n,:)        ! for now, use same z0_ice as z0
+     
+      print *, "NEED TO FIX"
+      ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))
+      ice_snow_thick(m,n,2) = 0.
+      print *, "ice_snow_thick",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2),sit,snt,sic
+      print *, "CAUTION!!! MUST BE AWARE OF MODELS USING TRUE THICKNESS OR EFFECTIVE THICKNESS..."
 
 !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
       call Initialize_NeXtSIM_ABL( &
@@ -419,7 +496,8 @@ PROGRAM ABL
         slon,                                                           & ! See above
         semis(m,n),                                                     & ! Internal or from coupler?
         rlat(m,n),                                                      &
-        0.001,                                                            & ! constant z0 for now...Internal or from coupler?
+        z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
+        z0_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
 !        z0(m,n),                                                        & ! Internal or from coupler?
         taur(m,n),                                                      & ! Internal variable
 !        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
@@ -431,11 +509,50 @@ PROGRAM ABL
         u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),              & ! prognostics
         e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),           & ! prognostics
         wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
-        p(m,n,:), tld(m,n,:) )                                            ! prognostics
+        p(m,n,:), tld(m,n,:), ni,                                       &    ! prognostics
+        dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick(m,n,1) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
       print *, "ustar from initialize: ",ustar(m,n)
+      print *, "soil values: "
+      print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
+
+      ! Now initialise for later
+      do n_si = 1,ncat
+        u_tmp(m,n,:,n_si) = u(m,n,:)
+        v_tmp(m,n,:,n_si) = v(m,n,:)
+        t_tmp(m,n,:,n_si) = t(m,n,:)
+        q_tmp(m,n,:,n_si) = q(m,n,:)
+        qi_tmp(m,n,:,n_si) = qi(m,n,:)
+        e_tmp(m,n,:,n_si) = e(m,n,:)
+        ep_tmp(m,n,:,n_si) = ep(m,n,:)
+        uw_tmp(m,n,:,n_si) = uw(m,n,:)
+        vw_tmp(m,n,:,n_si) = vw(m,n,:)
+        wt_tmp(m,n,:,n_si) = wt(m,n,:)
+        wq_tmp(m,n,:,n_si) = wq(m,n,:)
+        wqi_tmp(m,n,:,n_si) = wqi(m,n,:)
+        km_tmp(m,n,:,n_si) = km(m,n,:)
+        kh_tmp(m,n,:,n_si) = kh(m,n,:)
+        ustar_tmp(m,n,n_si) = ustar(m,n)
+        p_tmp(m,n,:,n_si) = p(m,n,:)
+        tld_tmp(m,n,:,n_si) = tld(m,n,:)
+        blht_tmp(m,n,n_si) = blht(m,n)
+        rif_blht_tmp(m,n,n_si) = rif_blht(m,n)
+      enddo
+ 
+      print *, "T",t(m,n,:)
+
+!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
+      !!! HACK FOR NOW
+      do n_si=1,ncat
+        dedzs(m,n,:,n_si) = dedzs(m,n,:,1)
+        tsoil(m,n,:,n_si) = tsoil(m,n,:,1)
+        zsoil(m,n,:,n_si) = zsoil(m,n,:,1)
+        dzeta(m,n,n_si) = dzeta(m,n,1)
+      enddo
+
 
     enddo
   enddo
+
 
 !  u850_init_HR = u850_now%get_point(1,1)
 !  v850_init_HR = v850_now%get_point(1,1)
@@ -551,6 +668,12 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 !  HCR add: initialise values for conductive heat flux!
+!   do m = 1, mgr
+!     do n = 1, ngr
+!       dQiadT = 4.*0.996*0.0000000567*(t(m,n,1)**3)
+!       gflux = lw_net + sw_net + mslhf + msshf 
+!  call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)
+!       Tsurf
 !  for m,n loop
 !  Tsurf_old = t(m,n,1)
 !  gflux = lw_net + sw_net + mslhf + msshf 
@@ -559,7 +682,7 @@ PROGRAM ABL
 !  if (abs(Tsurf-Tsurf_old).lt.1e2) then
 !    WE HAVE INITIALISED TSURF  
 
-  Tsurf = t(:,:,1)  
+!  Tsurf = t(:,:,1)  
 !  print *, "initialising Tsurf",t(:,:,1),-2.+273.15
 !  do m = 1, mgr
 !    do n = 1, ngr
@@ -567,9 +690,6 @@ PROGRAM ABL
 !      Tsurf(m,n) = -2. + 273.15
 !    enddo
 !  enddo
-  call sic_now%read_input(time, "Moorings")
-  call sit_now%read_input(time, "Moorings")
-  call snt_now%read_input(time, "Moorings")
   next_time = time + timedelta(hours=1)
   call sic_next%read_input(next_time, "Moorings")
   call sit_next%read_input(next_time, "Moorings")
@@ -579,17 +699,22 @@ PROGRAM ABL
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
+
+      print *, "ABOUT TO LOAD FILES"
       ! Load ERA5 data every hour
       next_time = time + timedelta(hours=1)
       call t850_now%read_input(time, "ERA")
       call u850_now%read_input(time, "ERA")
       call v850_now%read_input(time, "ERA")
+      print *, "LOADED 850"
       call sdlw_now%read_input(time, "ERA")
       call sdsw_now%read_input(time, "ERA")
+      print *, "LOADED sw lw"
       call ntlw_now%read_input(time, "ERA")
       call ntsw_now%read_input(time, "ERA")
       call mslhf_now%read_input(time, "ERA")
       call msshf_now%read_input(time, "ERA")
+      print *, "LOADED other files"
 !      call sic_now%read_input(time, "Moorings")
 !      call sit_now%read_input(time, "Moorings")
 !      call snt_now%read_input(time, "Moorings")
@@ -597,12 +722,15 @@ PROGRAM ABL
       call t850_next%read_input(next_time, "ERA")
       call u850_next%read_input(next_time, "ERA")
       call v850_next%read_input(next_time, "ERA")
+      print *, "LOADED othe file 1"
       call sdlw_next%read_input(next_time, "ERA")
       call sdsw_next%read_input(next_time, "ERA")
+      print *, "LOADED other files 2"
       call ntlw_next%read_input(next_time, "ERA")
       call ntsw_next%read_input(next_time, "ERA")
       call mslhf_next%read_input(next_time, "ERA")
-      call msshf_next%read_input(time, "ERA")
+      call msshf_next%read_input(next_time, "ERA")
+      print *, "LOADED other files 3"
 !      call sic_next%read_input(next_time, "Moorings")
 !      call sit_next%read_input(next_time, "Moorings")
 !      call snt_next%read_input(next_time, "Moorings")
@@ -691,9 +819,18 @@ PROGRAM ABL
 !      print *, "going into INTEGATE with this u",u(m,n,:)
 !      print *, "u1 ",u(m,n,1)
 
+      print *, "starting loop"
       do jm = 1, nmts
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
-!        print *, "doing the Integration as jh, jm = ",jh,jm
+        print *, "doing the Integration as jh, jm = ",jh,jm
+
+        if (coupling_cnt.eq.coupling_ds) then
+          do_merge = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
+          coupling_cnt = 0.
+          print *, "PROCEEDING WITH COUPLING"
+        else
+          do_merge = 0
+        endif
 
         do m = 1, mgr
           do n = 1, ngr
@@ -703,11 +840,9 @@ PROGRAM ABL
 
             ! Time integration
             tint = real(jm-1)/real(nmts)
-!            print *, "this tint ",tint," jm and nmts are ",jm,nmts
-            ! t850 = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
-            ! u850 = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
-            ! v850 = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
+            print *, "this tint ",tint," jm and nmts are ",jm,nmts," coupling?",do_merge
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
+            print *, "SDLW NOW ",m,n,sdlw, tint, sdlw_now%get_point(m,n),sdlw_next%get_point(m,n)
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
             ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
             ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
@@ -716,14 +851,31 @@ PROGRAM ABL
 
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
-!           ANSWER: ultimately, these will be put in every timestep
+!           ANSWER: ultimately, these will be at the coupling timestep. Quicker
+!           to read in every m,n each timestep? Or store as a 2d array each
+!           coupling timestep?
+!            if (do_merge.eq.1) then
+!              sit = sit_now%get_point(m,n)
+!              snt = snt_now%get_point(m,n)
+!              sic = sic_now%get_point(m,n)
+!            endif
 !            snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
 !            sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
 !            sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
-             snt = hourint(tint, snt_now%get_point(m,n), snt_next%get_point(m,n))
-             sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
-             sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
 
+            !!!!!! INITIALISE SEA ICE GRID !!!!!
+            !! Note: this may need to move based on where we do the nextsim coupling
+            ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
+            do n_si = 1,ncat
+              print *, "about to call subsoilt_dedzs"
+              print *, "dzeta going in ",dzeta(m,n,n_si) 
+              print *, "zsoil going in ",zsoil(m,n,:,n_si)
+              print *, "dedzs going in ",dedzs(m,n,:,n_si)
+              print *, "z0_ice going in ",z0_ice(m,n,n_si)
+              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),z0_ice(m,n,n_si),ni)
+            enddo
+
+            !print *, "get hPa levels"
             t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
             if (t700_now%get_point(m,n).lt.0) then
               t_hPa(m,n,12) = -999.
@@ -823,48 +975,184 @@ PROGRAM ABL
             v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
             v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
 
-            print *, "new inputs ",sic,sit,snt, Tsurf(m,n)
+            do n_si = 1, ncat
 
-!           Test: set t(1) to be the freezing point, such as a lead
-!            print *, "t(1) before setting ",t(m,n,1)
-!            t(m,n,1) = -2. + 273.75
-!            print *, "t(1) after setting ",t(m,n,1)
-            call Integrate_NeXtSIM_ABL( &
-              albedo(m,n),                                              & ! Internal or from coupler?
-              t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
-              sdlw, sdsw,                                               & ! From file
-              ntlw, ntsw, mslhf, msshf,                                 &
-              slon,                                                     & ! See above
-              semis(m,n),                                               & ! Internal or from coupler?
-              rlat(m,n),                                                &
-              0.001,                                                    & ! constant z0 for now...Internal or from coupler?
-!              z0(m,n),                                                  & ! Internal or from coupler?
-              taur(m,n),                                                & ! Internal variable
-              p0%get_point(m,n),                                        & ! From file
-              ds, ha, jd,                                               &
-              nj,                                                       & ! Number of vertical grid points
-              nv,                                                       & ! Always 6?
-              dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
-              sic, sit, snt, Tsurf(m,n),    & ! used for conductive heat flux
-              u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
-              e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
-              wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
-              p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n))             ! prognostics
+                call compute_dzeta(ice_snow_thick(m,n,n_si), z0_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
 
+                !print *, "about to integrate -----------", n_si
+                !print *, "t_test ",m,n," t_tmp in ",t_tmp(m,n,:,n_si)
+                !print *, "t_test ",m,n," t outside ",t(m,n,:) ! for n_si == 1, these should be the same. For n_si == 2, not used...
+                !print *,  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si)
+                !print *,  u_tmp(m,n,:,n_si)
+                !print *,  v_tmp(m,n,:,n_si)
+                !print *,  q_tmp(m,n,:,n_si)
+                !print *, qi_tmp(m,n,:,n_si) 
+                !print *,  e_tmp(m,n,:,n_si)
+                !print *, ep_tmp(m,n,:,n_si)
+                !print *,  uw_tmp(m,n,:,n_si)
+                !print *,  vw_tmp(m,n,:,n_si)
+                !print *, wt_tmp(m,n,:,n_si)
+                !print *,  wq_tmp(m,n,:,n_si)
+                !print *, wqi_tmp(m,n,:,n_si)
+                !print *, km_tmp(m,n,:,n_si)
+                !print *, kh_tmp(m,n,:,n_si)
+                !print *, ustar_tmp(m,n,n_si)
+                !print *,  p_tmp(m,n,:,n_si)
+                !print *, tld_tmp(m,n,:,n_si) 
+                !print *,  blht_tmp(m,n,n_si)
+                !print *, rif_blht_tmp(m,n,n_si)
+                call Integrate_NeXtSIM_ABL( &
+                  albedo(m,n),                                              & ! Internal or from coupler?
+                  t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
+                  sdlw, sdsw,                                               & ! From file
+                  ntlw, ntsw, mslhf, msshf,                                 &
+                  slon,                                                     & ! See above
+                  semis(m,n),                                               & ! Internal or from coupler?
+                  rlat(m,n),                                                &
+                  z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
+                  z0_ice(m,n,n_si),  &
+    !              z0(m,n),                                                  & ! Internal or from coupler?
+                  taur(m,n),                                                & ! Internal variable
+                  p0%get_point(m,n),                                        & ! From file
+                  ds, ha, jd,                                               &
+                  nj,                                                       & ! Number of vertical grid points
+                  nv,                                                       & ! Always 6?
+                  dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
+                  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
+                  u_tmp(m,n,:,n_si), v_tmp(m,n,:,n_si), t_tmp(m,n,:,n_si), &
+                  q_tmp(m,n,:,n_si), qi_tmp(m,n,:,n_si),        & ! prognostics
+                  e_tmp(m,n,:,n_si), ep_tmp(m,n,:,n_si), uw_tmp(m,n,:,n_si), &
+                  vw_tmp(m,n,:,n_si), wt_tmp(m,n,:,n_si),     & ! prognostics
+                  wq_tmp(m,n,:,n_si), wqi_tmp(m,n,:,n_si), km_tmp(m,n,:,n_si), &
+                  kh_tmp(m,n,:,n_si), ustar_tmp(m,n,n_si),  & ! prognostics
+                  p_tmp(m,n,:,n_si), tld_tmp(m,n,:,n_si), & 
+                  blht_tmp(m,n,n_si), rif_blht_tmp(m,n,n_si),           &  ! prognostics
+                  !u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
+                  !e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
+                  !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
+                  !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
+                  ni,                                                       &
+                  dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si))             ! for "soil" temperatures
+                !print *, "t_test ",m,n," t_tmp out ",t_tmp(m,n,:,n_si), n_si
+            enddo
 
-!            print *, "after INTEGRATION t ",t(m,n,:)
-!            print *, "after INTEGRATION u ",u(m,n,:)
-!            print *, "after INTEGRATION v ",v(m,n,:)
+            !! After each loop, make sure we update the main arrays with a
+            !merged column. BUT only use this merged array to force the next
+            !timestep if it is a nextsim coupling timestep and we have new ice
+            !inputs
+            u_tmp2(:) = 0
+            v_tmp2(:) = 0
+            t_tmp2(:) = 0
+            q_tmp2(:) = 0
+            qi_tmp2(:) = 0
+            e_tmp2(:) = 0
+            ep_tmp2(:) = 0
+            uw_tmp2(:) = 0
+            vw_tmp2(:) = 0
+            wt_tmp2(:) = 0
+            wq_tmp2(:) = 0
+            wqi_tmp2(:) = 0
+            km_tmp2(:) = 0
+            kh_tmp2(:) = 0
+            ustar_tmp2 = 0
+            p_tmp2(:) = 0
+            tld_tmp2(:) = 0
+            blht_tmp2 = 0
+            rif_blht_tmp2 = 0
 
+            area_conc_ow = 1.
+            do n_si = 1, ncat
+              if (do_tiling.eq.0) then
+                area_conc = 1.
+              elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
+                area_conc = area_conc_ow
+              else
+                area_conc = sic(m,n,n_si) ! for the sea ice loop, area_conc = sic; for
+                area_conc_ow = area_conc_ow - area_conc
+                ! thin sea ice, sic_thin, for ocean, 1. - sic - sic_thin ... 
+                ! for this last one, assume that all categories are independent! i.e. for nextsim mooring output (not coupled, but used for testing), sit + sit_thin + ocean = 1
+              endif
+              !print *, "check! area_conc for n_si ",n_si,area_conc
+              u_tmp2 = u_tmp2 + u_tmp(m,n,:,n_si)*area_conc
+              v_tmp2 = v_tmp2 + v_tmp(m,n,:,n_si)*area_conc
+              t_tmp2 = t_tmp2 + t_tmp(m,n,:,n_si)*area_conc
+              q_tmp2 = q_tmp2 + q_tmp(m,n,:,n_si)*area_conc
+              qi_tmp2 = qi_tmp2 + qi_tmp(m,n,:,n_si)*area_conc
+              e_tmp2 = e_tmp2 + e_tmp(m,n,:,n_si)*area_conc
+              ep_tmp2 = ep_tmp2 + ep_tmp(m,n,:,n_si)*area_conc
+              uw_tmp2 = uw_tmp2 + uw_tmp(m,n,:,n_si)*area_conc
+              vw_tmp2 = vw_tmp2 + vw_tmp(m,n,:,n_si)*area_conc
+              wt_tmp2 = wt_tmp2 + wt_tmp(m,n,:,n_si)*area_conc
+              wq_tmp2 = wq_tmp2 + wq_tmp(m,n,:,n_si)*area_conc
+              wqi_tmp2 = wqi_tmp2 + wqi_tmp(m,n,:,n_si)*area_conc
+              km_tmp2 = km_tmp2 + km_tmp(m,n,:,n_si)*area_conc
+              kh_tmp2 = kh_tmp2 + kh_tmp(m,n,:,n_si)*area_conc
+              ustar_tmp2 = ustar_tmp2 + ustar_tmp(m,n,n_si)*area_conc
+              p_tmp2 = p_tmp2 + p_tmp(m,n,:,n_si)*area_conc
+              tld_tmp2 = tld_tmp2 + tld_tmp(m,n,:,n_si)*area_conc
+              blht_tmp2 = blht_tmp2 + blht_tmp(m,n,n_si)*area_conc
+              rif_blht_tmp2 = rif_blht_tmp2 + rif_blht_tmp(m,n,n_si)*area_conc
+            enddo
+
+            ! now, add the new averaged arrays back to those to be carried
+            ! forward
+            u(m,n,:) = u_tmp2
+            v(m,n,:) = v_tmp2
+            t(m,n,:) = t_tmp2
+            !print *, "t_test ",m,n," t at end ",t(m,n,:)
+            q(m,n,:) = q_tmp2 
+            qi(m,n,:) = qi_tmp2 
+            e(m,n,:) = e_tmp2  
+            ep(m,n,:) = ep_tmp2 
+            uw(m,n,:) = uw_tmp2 
+            vw(m,n,:) = vw_tmp2 
+            wt(m,n,:) = wt_tmp2 
+            wq(m,n,:) = wq_tmp2 
+            wqi(m,n,:) = wqi_tmp2 
+            km(m,n,:) = km_tmp2 
+            kh(m,n,:) = kh_tmp2 
+            ustar(m,n) = ustar_tmp2 
+            p(m,n,:) = p_tmp2 
+            tld(m,n,:) = tld_tmp2 
+            blht(m,n) = blht_tmp2 
+            rif_blht(m,n) = rif_blht_tmp2 
+
+            if (do_merge.eq.1) then
+              do n_si = 1,ncat
+                ! Now reinitialise (but will this be overwritten anyway?)
+                u_tmp(m,n,:,n_si) = u(m,n,:)*1.
+                v_tmp(m,n,:,n_si) = v(m,n,:)*1.
+                t_tmp(m,n,:,n_si) = t(m,n,:)*1.
+                q_tmp(m,n,:,n_si) = q(m,n,:)*1.
+                qi_tmp(m,n,:,n_si) = qi(m,n,:)*1.
+                e_tmp(m,n,:,n_si) = e(m,n,:)*1.
+                ep_tmp(m,n,:,n_si) = ep(m,n,:)*1.
+                uw_tmp(m,n,:,n_si) = uw(m,n,:)*1.
+                vw_tmp(m,n,:,n_si) = vw(m,n,:)*1.
+                wt_tmp(m,n,:,n_si) = wt(m,n,:)*1.
+                wq_tmp(m,n,:,n_si) = wq(m,n,:)*1.
+                wqi_tmp(m,n,:,n_si) = wqi(m,n,:)*1.
+                km_tmp(m,n,:,n_si) = km(m,n,:)*1.
+                kh_tmp(m,n,:,n_si) = kh(m,n,:)*1.
+                ustar_tmp(m,n,n_si) = ustar(m,n)*1.
+                p_tmp(m,n,:,n_si) = p(m,n,:)*1.
+                tld_tmp(m,n,:,n_si) = tld(m,n,:)*1.
+                blht_tmp(m,n,n_si) = blht(m,n)*1.
+                rif_blht_tmp(m,n,n_si) = rif_blht(m,n)*1.
+              enddo
+            endif 
+       
           enddo
         enddo
 
         time = time + dt;
+        coupling_cnt = coupling_cnt + ds
         print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
 
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
         mnt_out_ds = mnt_out*60./ds
+        print *, "mnt_out_ds",mnt_out_ds
         IF(MOD(jm,mnt_out_ds).eq.0) then 
           ! mnt_out to number timesteps HCR
           call srfv_all%append_time(time)
@@ -890,10 +1178,10 @@ PROGRAM ABL
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
         ENDIF
-
+        print *, "appended et and srfv_all"
       enddo
       ! print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-
+      print *, "end do"
       ! surface variable every hr_out _hours_
       IF(MOD(jh,hr_out).eq.0) then
         call Turb%append_time(time)
@@ -931,5 +1219,26 @@ PROGRAM ABL
 !      output = t*val0 + (1.-t)*val1
 
     END FUNCTION hourint
+
+    INTEGER FUNCTION read_coupling_timestep(filename) RESULT(out_coupling_timestep)
+
+      character(len=*), intent(in) :: filename
+
+      integer :: unitN
+      integer :: ierr
+
+      open(unitN,file=filename,status='old',action='read',iostat=ierr)
+
+      if (ierr /= 0) then
+        write(*,*) "error: unable to open the file", filename
+        stop
+      endif
+   
+      read(unitN,*) out_coupling_timestep
+
+      close(unitN)
+
+    END FUNCTION read_coupling_timestep
+
 
 END PROGRAM ABL

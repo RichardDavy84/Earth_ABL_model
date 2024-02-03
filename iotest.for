@@ -101,8 +101,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 ! Test the loading of data and interpolation
         time = datetime(2007,08,21)
-        call mslp%init("msl", "data", rlon, rlat, time)
-        call mslp%read_input(time)
+        call mslp%init("msl", "data", rlon, rlat, time, "ERA")
+        call mslp%read_input(time, "ERA")
 
 ! Write the intrapolation results to file
         fname = "msl_interp.nc"
@@ -127,7 +127,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! One more time ...
         do k=1, 125
           time = time + timedelta(hours=1)
-          call mslp%read_input(time)
+          call mslp%read_input(time, "ERA")
           call interp_out%append_time(time)
           do i = 1, mgr
             do j = 1, ngr

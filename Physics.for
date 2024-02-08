@@ -142,7 +142,7 @@ c      print *, "STRID 1 ",u(1),bet,r(1)
         bet=b(j)-a(j)*gam(j)
           if(bet.eq.0.) stop 'tridag failed'
         u(j)=(r(j)-a(j)*u(j-1))/bet
-        print *, "STRID j ",j,u(j),gam(j)
+c        print *, "STRID j ",j,u(j),gam(j)
  10   continue
       do 20 j=n-1,1,-1
         u(j)=u(j)-gam(j+1)*u(j+1)

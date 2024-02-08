@@ -131,10 +131,19 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Working variables
     integer, dimension(:), allocatable :: dimlens
+    ! character(len=*), dimension(:), allocatable :: dimnames
     character(len=short_string), dimension(:), allocatable :: dimnames
 
     ! get the dims
+    print *, "HCR about to read"
+    print *, "fname ",fname
+    print *, "lon_name ",lon_name
+    dimnames = "TT"
+    dimlens = 2
+    print *, "dimnames ",dimnames
+    print *, "going into nc_dims"
     call nc_dims(fname, lon_name, dimnames, dimlens)
+    print *, "HCR read dims"
     mgr = dimlens(1)
     ngr = dimlens(2)
 

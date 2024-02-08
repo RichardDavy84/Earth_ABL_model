@@ -1,13 +1,1 @@
-# Local settings for the Makefile
-
-FC = gfortran
-# MODFLAG should be -J gfort and -module for ifort
-# It's for the option to tell the compiler where to place module files
-MODFLAG = -J
-
-FFLAGS = -g -I/usr/local/include -I/opt/local/include
-F90FLAGS = -g -I/usr/local/include -I/opt/local/include
-LDFLAGS = -L/usr/local/lib  -L/opt/local/lib
-
-# Extra gfortran option for legacy code
-FFLAGS += -std=legacy
+make.macro_FramHR

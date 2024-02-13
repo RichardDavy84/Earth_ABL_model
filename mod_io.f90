@@ -213,13 +213,11 @@ double precision function netCDF_time(self, time_in) result(time_out)
     enddo
 
     ! Calculate weights:
-!    print *, "about to calculate weights for ",filename_st
     if (filename_st == "ERA") then
       call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
     elseif (filename_st == "Moorings") then
       call calc_weights_2Dll(self, elon2, elat2, lon_fx, lat) !this will be different with 2d lat lon 
     endif
-    print *, "calculated weights ",self%a_lon,self%a_lat,self%b_lon,self%b_lat
 
     ! TODO: Add 3D here
     ! Allocate data array

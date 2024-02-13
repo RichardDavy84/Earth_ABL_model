@@ -175,10 +175,11 @@ c======================================================================*
 c       Subroutine SUBGRID  --- calculating grid mesh zm and zt        *
 c======================================================================*
       SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
+
+      USE physics, only: z0c, deta, rlb, eta
+
       IMPLICIT none
       INTEGER nj,nw,j,jm
-      include "constc.h"
-      include "cgrid.h"
       REAL dedzm(nj),dedzt(nj),zm(nj),zt(nj),zm0
       REAL x1,x2,eps,rtsafe
       EXTERNAL rtsafe,fgrid
@@ -223,9 +224,10 @@ c======================================================================*
 c         Subroutine fgrid --- formula of coordinate transform         *
 c======================================================================*
       SUBROUTINE fgrid(x,f,df)
+
+      USE physics, only: z0c, rlb, eta
+
       IMPLICIT none
-      include "constc.h"
-      include "cgrid.h"
       REAL x,f,df
 c
 	f=alog(x/z0c+1.)+x/rlb-eta
@@ -239,11 +241,13 @@ c======================================================================*
 c     Subroutine GEO_DL --- calculate coefficient from Drag_Laws       *
 c======================================================================*
       SUBROUTINE subgdl(fc,z0,angle,aconst,ustar)
+
+      USE physics, only: a, b
+
       IMPLICIT none
       REAL fc,z0
       EXTERNAL fdlaw
       REAL angle,aconst,ustar,rtsafe,edif
-      include "cstab.h"
 c
         a=2.
         b=4.5
@@ -258,11 +262,11 @@ c======================================================================*
 c             Subroutine FDLAW --- formula of ABL drag law             *
 c======================================================================*
       SUBROUTINE fdlaw(x,f,df)
+
+      USE physics, only: fc, ug, vg, vk, z0, a, b
+
       IMPLICIT none
-      include "consta.h"
-      include "constc.h"
       REAL x,f,df,wspd
-      include "cstab.h"
 c
 c     In the original model, ug = wind speed and vg = 0
 c     Now updated to make this more explicit
@@ -327,16 +331,16 @@ c======================================================================*
       subroutine subprof(p,q,qi,tvis,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,
      1  kh,km,tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,
      2  nj)
+
+      USE physics, only: alpha, fc, grav, rl0, tg, ug, vg, vk, deta, pr,
+     1   z0, ustar, uw0, vw0, wq0, wqi0, wt0
+
       implicit none
       INTEGER nj,j
       REAL p(nj),q(nj),qi(nj),tvis(nj),t(nj),theta(nj),u(nj),v(nj),
      1     e(nj),ep(nj),uw(nj),vw(nj),wq(nj),wqi(nj),wt(nj),
      2     kh(nj),km(nj),tl(nj),tld(nj),rnet(nj),dedzt(nj),zm(nj),zt(nj)
       REAL aconst,angle,cp,rgas,rpi,tgamma,fnqs,uin,vin
-      include "consta.h"
-      include "constb.h"
-      include "constc.h"
-      include "flxsrf.h"
       EXTERNAL fnqs
 c
         u (1)=0.
@@ -443,10 +447,10 @@ c======================================================================*
       subroutine sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
      1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
      2                  nj,nw)
+
+      USE physics, only: alpha, betag, rl0, vk, betam, pr, deta, z0
+
       IMPLICIT none
-      include "consta.h"
-      include "constb.h"
-      include "constc.h"
       INTEGER nj,nw,j
       REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dudz(nj),dvdz(nj),
      1     dthdz(nj),dedzt(nj),zm(nj),zt(nj),e(nj),ep(nj),
@@ -565,11 +569,11 @@ c similarity theory and the profile relations of Businger et al (1971) *
 c======================================================================*
       subroutine subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,
      1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
+
+      USE physics, only: alpha, betag, vk, pr, deta, qistar, qstar,
+     1  tstar, ustar, uw0, wq0, vw0, wqi0, wt0, z0
+
       IMPLICIT none
-      include "consta.h"
-      include "constb.h"
-      include "constc.h"
-      include "flxsrf.h"
       INTEGER nn,nj,nw,j
       REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dedzt(nj),zm(nj),zt(nj),
      1     e(nj),ep(nj),kh(nj),km(nj),rif(nj),rlmo(nj),tl(nj),tld(nj),
@@ -672,12 +676,11 @@ c                           Function FUNUS                             -
 C           Calculating Monin-Obukhov similarity theory                -
 c-----------------------------------------------------------------------
       subroutine fusrf(x,fus,dfus)
+
+      USE physics, only: betag, rlo, tstar, vk, wind, z0, zref
+
       IMPLICIT none
       REAL x,fus,dfus
-      include "consta.h"
-      include "constc.h"
-      include "flxsrf.h"
-      include "constus.h"
       REAL fpsi_h,fpsi_m,dfpsi_m
       EXTERNAL fpsi_h,fpsi_m,dfpsi_m
 c
@@ -691,9 +694,11 @@ c----------------------------------------------------------------------*
 c         Function FPHI_M  -  Stability function for wind profile      -
 c----------------------------------------------------------------------*
       FUNCTION fphi_m(zol)
+
+      USE physics, only: betam, gammam
+
       IMPLICIT none
       REAL fphi_m,zol
-      include "constb.h"
 c
       IF(zol.lt.0.) THEN
         fphi_m=1./(1.-gammam*zol)**.25
@@ -707,9 +712,11 @@ c----------------------------------------------------------------------*
 c    Function FPHI_H -- Stability function for temperature & scalars   -
 c----------------------------------------------------------------------*
       FUNCTION fphi_h(zol)
+
+      USE physics, only: betah, gammah, pr
+
       IMPLICIT none
       REAL fphi_h,zol
-      include "constb.h"
 c
       IF(zol.lt.0.) THEN
         fphi_h=pr/(1.-gammah*zol)**.5
@@ -725,9 +732,11 @@ c-----------------------------------------------------------------------
 c           Function FPSI_M -- Stability function for wind             -
 c-----------------------------------------------------------------------
       FUNCTION fpsi_m(rlo,zr,z0)
+
+      USE physics, only: betam, gammam
+
       IMPLICIT none
       REAL fpsi_m,rlo,zr,z0,x,x0
-      include "constb.h"
 c
       IF(zr*rlo.lt.0.) THEN
         x=(1.-gammam*zr*rlo)**.25
@@ -745,9 +754,11 @@ c                         Function DFPSI_M                             -
 c     Derivative of stability function for wind with respect of u*     -
 c-----------------------------------------------------------------------
       FUNCTION dfpsi_m(betag,tstar,ustar,vk,zr,zol)
+
+      USE physics, only: betam, gammam
+
       IMPLICIT none
       REAL dfpsi_m,betag,tstar,ustar,vk,zr,zol,drldus,dxdus,x
-      include "constb.h"
 c
         drldus=2.*betam*betag*vk*tstar/(ustar*ustar*ustar)
       IF(zol.lt.0.) THEN
@@ -764,9 +775,11 @@ c-----------------------------------------------------------------------
 c    Function FPSI_H -- Stability function for temperature & scalars   -
 c-----------------------------------------------------------------------
       FUNCTION fpsi_h(rlo,zr,z0)
+
+      USE physics, only: betah, gammah
+
       IMPLICIT none
       REAL fpsi_h,rlo,zr,z0,x,x0
-      include "constb.h"
 c
       IF(zr*rlo.lt.0.) THEN
         x=(1.-gammah*zr*rlo)**.5
@@ -916,6 +929,9 @@ c                 d -- right hand side of difference matrix            *
 c***********************************************************************
       SUBROUTINE coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,t,u,v,uw,vw,dedzm,
      1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
+
+      USE physics, only: alpha, betag, deta, ds, fc, ug, vg, zero
+
       IMPLICIT none
       INTEGER nj,nv,nw,ipvt(nv)
 c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
@@ -924,9 +940,6 @@ c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
       REAL dedzm(nj),p(nj),q(nj),qi(nj),t(nj),u(nj),v(nj)
       REAL dedzt(nj),e(nj),ep(nj),kh(nj),km(nj),tld(nj),uw(nj),vw(nj),
      1     rnet(nj),zm(nj),wa(nv),wlo
-      include "consta.h"
-      include "constc.h"
-      include "flxsrf.h"
       INTEGER j,jp,jm
       REAL fnqs,deta2,rdif,rdis
       REAL fpsi_m,fpsi_h,rw1,rt1,rw2,rt2

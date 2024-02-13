@@ -56,13 +56,14 @@ C------------------------------------------------------------
 C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
+      use physics, only: ustar, z0c, z0, zref, ztop, eta1, deta, rlb,
+     1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
+     2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
+     3 wqi0, wt0
+
       IMPLICIT none
       INTEGER nj,nv,nw,ir, ni
       PARAMETER(nw=0,ir=121)
-      include "consta.h"
-      include "constb.h"
-      include "constc.h"
-      include "flxsrf.h"
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv),psi(nj,nv)
       REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)

@@ -176,7 +176,7 @@ c       Subroutine SUBGRID  --- calculating grid mesh zm and zt        *
 c======================================================================*
       SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
 
-      USE physics, only: z0c, deta, rlb, eta
+      USE physics, only: ct_atmos, deta, rlb, eta
 
       IMPLICIT none
       INTEGER nj,nw,j,jm
@@ -214,8 +214,8 @@ c
       ENDIF
 c        PAUSE
       DO 30 j=1,nj
-	dedzm(j)=1./(zm(j)+z0c)+1./rlb
-	dedzt(j)=1./(zt(j)+z0c)+1./rlb
+	dedzm(j)=1./(zm(j)+ct_atmos)+1./rlb
+	dedzt(j)=1./(zt(j)+ct_atmos)+1./rlb
  30   CONTINUE
 c
       RETURN
@@ -225,14 +225,14 @@ c         Subroutine fgrid --- formula of coordinate transform         *
 c======================================================================*
       SUBROUTINE fgrid(x,f,df)
 
-      USE physics, only: z0c, rlb, eta
+      USE physics, only: ct_atmos, rlb, eta
 
       IMPLICIT none
       REAL x,f,df
 c
-	f=alog(x/z0c+1.)+x/rlb-eta
-	df=1./(x+z0c)+1./rlb
-c	f=alog(x/z0c)+x/rlb-eta
+	f=alog(x/ct_atmos+1.)+x/rlb-eta
+	df=1./(x+ct_atmos)+1./rlb
+c	f=alog(x/ct_atmos)+x/rlb-eta
 c	df=1./x+1./rlb
 c
       RETURN
@@ -319,10 +319,10 @@ c
 c======================================================================*
 c     Subroutine COMPUTE_dzeta --- calculating dzeta from ice thickness*
 c======================================================================*
-      subroutine compute_dzeta(ice_snow_thickness,z0_ice,dzeta,ni)
-      REAL ice_snow_thickness,z0_ice,dzeta
+      subroutine compute_dzeta(ice_snow_thickness,ct_ice,dzeta,ni)
+      REAL ice_snow_thickness,ct_ice,dzeta
 
-      dzeta=alog(ice_snow_thickness/z0_ice+1.)/(ni-1.)
+      dzeta=alog(ice_snow_thickness/ct_ice+1.)/(ni-1.)
 
       end subroutine
 c======================================================================*

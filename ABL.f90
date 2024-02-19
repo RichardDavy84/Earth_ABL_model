@@ -117,7 +117,7 @@ PROGRAM ABL
   PARAMETER(nplev=12)
 !  REAL hPa(nplev)
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
-  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, z0_ice, z0
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -188,7 +188,7 @@ PROGRAM ABL
 
   ! TODO: Time information from namelist
   time0 = datetime(2007,01,01)
-  time1 = datetime(2007,01,10)
+  time1 = datetime(2007,01,02)
   dt = timedelta(seconds=10)
   ds = dt%getSeconds()
   nmts = hoursec/ds
@@ -218,7 +218,7 @@ PROGRAM ABL
   ALLOCATE(ustar(mgr,ngr))
   ALLOCATE(albedo, semis, taur, blht, rif_blht, blht_max, mold = ustar)
   ALLOCATE(z0(mgr,ngr,ncat)) !! NEW
-  ALLOCATE(z0_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
+  ALLOCATE(ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
   ALLOCATE(tld(mgr,ngr,nj))
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
@@ -250,6 +250,7 @@ PROGRAM ABL
   call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  print *, "initialise p0, t0, q0"
 
 !  hPa(1)=700.
 !  hPa(2)=750.
@@ -350,6 +351,7 @@ PROGRAM ABL
   call v1000_next%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t1000_now%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t1000_next%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  print *, "initial vertical profiles"
 
   !! Added by HCR
   call sdlw_now%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
@@ -376,6 +378,7 @@ PROGRAM ABL
   call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  print *, "initial surface conditions"
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
@@ -383,6 +386,7 @@ PROGRAM ABL
   call sic_now%read_input(time, "Moorings")
   call sit_now%read_input(time, "Moorings")
   call snt_now%read_input(time, "Moorings")
+  print *, "initialised sea ice conditions"
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
@@ -390,6 +394,7 @@ PROGRAM ABL
   call q0%read_input(time0, "ERA")
   call u850_now%read_input(time0, "ERA")
   call v850_now%read_input(time0, "ERA")
+  print *, "initialised ERA"
   do m = 1, mgr
     do n = 1, ngr
 
@@ -492,7 +497,7 @@ PROGRAM ABL
       !enddo
 
 !!    Settings for "soil" code
-      z0_ice(m,n,:) = z0(m,n,:)        ! for now, use same z0_ice as z0
+      ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
      
       print *, "NEED TO FIX"
       ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))
@@ -524,7 +529,7 @@ PROGRAM ABL
         semis(m,n),                                                     & ! Internal or from coupler?
         rlat(m,n),                                                      &
         z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
-        z0_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
+        ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
 !        z0(m,n),                                                        & ! Internal or from coupler?
         taur(m,n),                                                      & ! Internal variable
 !        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
@@ -908,7 +913,7 @@ PROGRAM ABL
             !! Note: this may need to move based on where we do the nextsim coupling
             ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
             do n_si = 1,ncat
-              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),z0_ice(m,n,n_si),ni)
+              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
             enddo
 
             !print *, "get hPa levels"
@@ -1013,7 +1018,7 @@ PROGRAM ABL
 
             do n_si = 1, ncat
 
-                call compute_dzeta(ice_snow_thick(m,n,n_si), z0_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
+                call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
 
                 !print *, "about to integrate -----------", n_si
                 !print *, "t_test ",m,n," t_tmp in ",t_tmp(m,n,:,n_si)
@@ -1046,7 +1051,7 @@ PROGRAM ABL
                   semis(m,n),                                               & ! Internal or from coupler?
                   rlat(m,n),                                                &
                   z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
-                  z0_ice(m,n,n_si),  &
+                  ct_ice(m,n,n_si),  &
     !              z0(m,n),                                                  & ! Internal or from coupler?
                   taur(m,n),                                                & ! Internal variable
                   p0%get_point(m,n),                                        & ! From file

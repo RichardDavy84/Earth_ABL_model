@@ -23,7 +23,7 @@ c***********************************************************************
      1    ntlw, ntsw, mslhf, msshf,
      1    slon,
      1    semis,rlat,z0_in,
-     1    z0_ice,
+     1    ct_ice,
      1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
      1    sic, sit, snt, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
@@ -57,7 +57,7 @@ C------------------------------------------------------------
 C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
-      use physics, only: ustar, z0c, z0, zref, ztop, eta1, deta, rlb,
+      use physics, only: ustar,ct_atmos,z0, zref, ztop, eta1, deta, rlb,
      1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
      2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
      3 wqi0, wt0
@@ -117,7 +117,7 @@ c      REAL*8 u_in,v_in
 
 c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,z0_ice
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
       INTEGER do_nudge_not_merge
 
@@ -576,7 +576,7 @@ c       just for printiing!
 cc++++++++++++++Calculating soil temperature
 c       we don't need to do this update of dzeta every time step! ...
 c        ice_snow_thick = (sit + snt)/sic
-c        CALL compute_dzeta(ice_snow_thick,z0_ice,dzeta,ni) ! this is now done just before the loop
+c        CALL compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni) ! this is now done just before the loop
 
         if ((sit + snt).eq.0.) then
           t(1) = 271.15

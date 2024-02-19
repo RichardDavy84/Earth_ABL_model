@@ -11,7 +11,7 @@ OBJ_DIR = .obj
 LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -I $(OBJ_DIR)
 
 # The source files for modules
-SRC = mod_io.f90
+SRC = mod_io.f90 mod_physics.f90
 S77 = Initialization_module_NeXtSIM.for Command_module_for_NeXtSIM.for Physics.for Solver.for
 
 # Resulting object files

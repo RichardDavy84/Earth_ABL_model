@@ -117,7 +117,7 @@ PROGRAM ABL
   PARAMETER(nplev=12)
 !  REAL hPa(nplev)
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
-  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0, albedo
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -129,7 +129,7 @@ PROGRAM ABL
 
   ! Surface only
   ! REAL(KIND=4), DIMENSION(:,:), ALLOCATABLE :: albedo, ustar, semis, z0, taur
-  REAL, DIMENSION(:,:), ALLOCATABLE :: albedo,ustar,semis,taur,blht,rif_blht,blht_max
+  REAL, DIMENSION(:,:), ALLOCATABLE :: ustar,semis,taur,blht,rif_blht,blht_max
 
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: &
    u_tmp,v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
@@ -216,9 +216,9 @@ PROGRAM ABL
 
   !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
-  ALLOCATE(albedo, semis, taur, blht, rif_blht, blht_max, mold = ustar)
+  ALLOCATE(semis, taur, blht, rif_blht, blht_max, mold = ustar)
   ALLOCATE(z0(mgr,ngr,ncat)) !! NEW
-  ALLOCATE(ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
+  ALLOCATE(albedo, ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
   ALLOCATE(tld(mgr,ngr,nj))
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
@@ -402,7 +402,7 @@ PROGRAM ABL
       if ( mask(m,n) .eq. 0 ) continue
 
       print *, "initializing: about to call"
-      print *, "albedoo ",albedo(m,n)
+      print *, "albedo ",albedo(m,n,:)
       print *, "u850 from file ",u850_now%get_point(m,n)
       print *, "v850 from file ",v850_now%get_point(m,n)
       print *, "slon ",slon
@@ -462,8 +462,13 @@ PROGRAM ABL
       print *, "about to INITIALIZE!!!"
 
 
-      print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW"
-      albedo(m,n) = 0.63 !!! NEED TO GET THIS AS ONE FOR EACH CATEGORY!!!
+      print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
+      ! Should this albedo ultimately be affected by the snow?
+      print *, "future consideration is to include snow albedo"
+      ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
+      albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
+      albedo(m,n,2) = 0.63 ! Albedo for thick ice (nextsim default)
+      albedo(m,n,3) = 0.07 ! Albedo for thick ice (nextsim default)
 
       !!! Hack for now
       do n_si = 1,ncat
@@ -521,7 +526,7 @@ PROGRAM ABL
 
 !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
       call Initialize_NeXtSIM_ABL( &
-        albedo(m,n),                                                    & ! Internal or from coupler?
+        albedo(m,n,1),                                                    & ! Internal or from coupler?
 !        u_in, v_in,                                                     &
         u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
 !        u(m,n,:), v(m,n,:),               & ! From file
@@ -1042,8 +1047,9 @@ PROGRAM ABL
                 !print *, tld_tmp(m,n,:,n_si) 
                 !print *,  blht_tmp(m,n,n_si)
                 !print *, rif_blht_tmp(m,n,n_si)
+                print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
                 call Integrate_NeXtSIM_ABL( &
-                  albedo(m,n),                                              & ! Internal or from coupler?
+                  albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
                   sdlw, sdsw,                                               & ! From file
                   ntlw, ntsw, mslhf, msshf,                                 &

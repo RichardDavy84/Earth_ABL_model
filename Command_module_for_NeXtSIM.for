@@ -484,7 +484,7 @@ c---------Calculating turbulent length scales, eddy diffusivity & fluxes
 c==============Calculating radiative heating rates hlw, hsw,
 c==============and surface fluxes dlw, dsw, sdir
           q(1)=q(2)     ! surface air-q is made equal to first air-level
-c	  albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
+	  albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
 c        CALL radia(p,q,t,tvis,hsw,hlw,fu,fd,su,sd,hu,hd,nj,
 c     1             s0c,sh,albedo1,cp,grav,sbc,semis,dlw,dsw,sdir)
 
@@ -519,7 +519,7 @@ c          print *, "INPUTS TO LW",lw,sbc,t(1)
           sw_net = (1.-albedo1)*sw
 c          gflux = (lw_net+ntsw+mslhf+msshf) 
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
-c          print *, "gflux vals ",gflux,lw_net,sw_net,h0,e0
+          print *,"ALBEDO gflux vals ",gflux,lw_net,sw_net,h0,e0,albedo1
 
 c          print *, "FFF",lw_net,sw_net,h0,e0,tsoil(1)
 c          print *, "FLUX DIFFERENCES: gflux",gflux

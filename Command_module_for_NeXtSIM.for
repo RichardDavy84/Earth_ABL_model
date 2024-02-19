@@ -436,14 +436,14 @@ c        print *, "alfa ",alfa
 c        print *, "beta ",beta
 c        print *, "nv ",nv 
 c        print *, "nj ",nj
-        do j=1,nj
-          psi(j,1) = 0.
-          psi(j,2) = 0.
-          psi(j,3) = 0.
-          psi(j,4) = 0.
-          psi(j,5) = 0.
-          psi(j,6) = 0.
-        enddo
+c        do j=1,nj
+c          psi(j,1) = 0.
+c          psi(j,2) = 0.
+c          psi(j,3) = 0.
+c          psi(j,4) = 0.
+c          psi(j,5) = 0.
+c          psi(j,6) = 0.
+c        enddo
 c        print *, "psi1 ",psi(:,1)
 c        print *, "psi2 ",psi(:,2)
 c        print *, "psi3 ",psi(:,3)

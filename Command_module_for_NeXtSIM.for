@@ -97,7 +97,7 @@ C------------------------------------------------------------
 
       REAL*8 slon
       REAL t850,height_t850,u_in,v_in
-      REAL albedo,semis,rlat
+      REAL albedo,semis,rlat,emis
       INTEGER Location
 c      REAL*8 u_in,v_in
       REAL ustar_in,z0_in
@@ -515,7 +515,7 @@ c	  print *,"h0 inputs ",rho,cp,wt(1)                    ! sfc heat flux w/m2
 c         HERE lw is downward, NOT net - so need to compute!
 c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
 c          print *, "INPUTS TO LW",lw,sbc,t(1)
-          lw_net = lw - sbc*0.996*(t(1)**4)
+          lw_net = lw - sbc*semis*(t(1)**4)
           sw_net = (1.-albedo1)*sw
 c          gflux = (lw_net+ntsw+mslhf+msshf) 
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux

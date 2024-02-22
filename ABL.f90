@@ -117,7 +117,7 @@ PROGRAM ABL
   PARAMETER(nplev=12)
 !  REAL hPa(nplev)
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
-  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0, albedo
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0, albedo, semis
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -129,7 +129,7 @@ PROGRAM ABL
 
   ! Surface only
   ! REAL(KIND=4), DIMENSION(:,:), ALLOCATABLE :: albedo, ustar, semis, z0, taur
-  REAL, DIMENSION(:,:), ALLOCATABLE :: ustar,semis,taur,blht,rif_blht,blht_max
+  REAL, DIMENSION(:,:), ALLOCATABLE :: ustar,taur,blht,rif_blht,blht_max
 
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: &
    u_tmp,v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
@@ -216,9 +216,9 @@ PROGRAM ABL
 
   !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
-  ALLOCATE(semis, taur, blht, rif_blht, blht_max, mold = ustar)
+  ALLOCATE(taur, blht, rif_blht, blht_max, mold = ustar)
   ALLOCATE(z0(mgr,ngr,ncat)) !! NEW
-  ALLOCATE(albedo, ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
+  ALLOCATE(albedo, semis, ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
   ALLOCATE(tld(mgr,ngr,nj))
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
@@ -406,7 +406,7 @@ PROGRAM ABL
       print *, "u850 from file ",u850_now%get_point(m,n)
       print *, "v850 from file ",v850_now%get_point(m,n)
       print *, "slon ",slon
-      print *, "semis ",semis(m,n)
+      print *, "semis ",semis(m,n,:)
       print *, "rlat ",rlat(m,n)
       print *, "z0 ",z0(m,n,:)
       print *, "taur ",taur(m,n)
@@ -467,8 +467,11 @@ PROGRAM ABL
       print *, "future consideration is to include snow albedo"
       ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
       albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
-      albedo(m,n,2) = 0.63 ! Albedo for thick ice (nextsim default)
-      albedo(m,n,3) = 0.07 ! Albedo for thick ice (nextsim default)
+      albedo(m,n,2) = 0.63 ! Albedo for thin ice... (what is nextsim default?)
+      albedo(m,n,3) = 0.07 ! Albedo for ocean (nextsim default)
+      semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
+      semis(m,n,2) = 0.996 ! Emissivity of ice, as in nextsim
+      semis(m,n,3) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
 
       !!! Hack for now
       do n_si = 1,ncat
@@ -531,7 +534,7 @@ PROGRAM ABL
         u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
 !        u(m,n,:), v(m,n,:),               & ! From file
         slon,                                                           & ! See above
-        semis(m,n),                                                     & ! Internal or from coupler?
+        semis(m,n,1),                                                     & ! Internal or from coupler?
         rlat(m,n),                                                      &
         z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
         ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
@@ -1054,7 +1057,7 @@ PROGRAM ABL
                   sdlw, sdsw,                                               & ! From file
                   ntlw, ntsw, mslhf, msshf,                                 &
                   slon,                                                     & ! See above
-                  semis(m,n),                                               & ! Internal or from coupler?
+                  semis(m,n,n_si),                                          & ! Internal or from coupler?
                   rlat(m,n),                                                &
                   z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
                   ct_ice(m,n,n_si),  &

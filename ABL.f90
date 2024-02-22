@@ -132,13 +132,13 @@ PROGRAM ABL
   REAL, DIMENSION(:,:), ALLOCATABLE :: ustar,taur,blht,rif_blht,blht_max
 
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE :: &
-   u_tmp,v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
-    wq_tmp, wqi_tmp, km_tmp, kh_tmp, p_tmp,tld_tmp
-  REAL, DIMENSION(:,:,:), ALLOCATABLE :: blht_tmp, rif_blht_tmp, ustar_tmp, ice_snow_thick
+   u_each_cat,v_each_cat,t_each_cat,q_each_cat,qi_each_cat,e_each_cat,ep_each_cat,uw_each_cat,vw_each_cat,wt_each_cat, &
+    wq_each_cat, wqi_each_cat, km_each_cat, kh_each_cat, p_each_cat,tld_each_cat
+  REAL, DIMENSION(:,:,:), ALLOCATABLE :: blht_each_cat, rif_blht_each_cat, ustar_each_cat, ice_snow_thick
   REAL, DIMENSION(:), ALLOCATABLE :: &
-   u_tmp2,v_tmp2,t_tmp2,q_tmp2,qi_tmp2,e_tmp2,ep_tmp2,uw_tmp2,vw_tmp2,wt_tmp2, &
-    wq_tmp2, wqi_tmp2, km_tmp2, kh_tmp2, p_tmp2,tld_tmp2
-  REAL :: blht_tmp2, rif_blht_tmp2, ustar_tmp2
+   u_sum_cat,v_sum_cat,t_sum_cat,q_sum_cat,qi_sum_cat,e_sum_cat,ep_sum_cat,uw_sum_cat,vw_sum_cat,wt_sum_cat, &
+    wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
+  REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
   INTEGER :: do_merge_or_nudge, do_tiling, coupling_seconds, do_nudge_not_merge
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -224,16 +224,16 @@ PROGRAM ABL
     theta, mold = tld)
   print *, "allocated 1"
 
-  ALLOCATE(u_tmp(mgr,ngr,nj,ncat))
-  ALLOCATE(v_tmp,t_tmp,q_tmp,qi_tmp,e_tmp,ep_tmp,uw_tmp,vw_tmp,wt_tmp, &
-    wq_tmp, wqi_tmp, km_tmp, kh_tmp, p_tmp,tld_tmp, mold = u_tmp)
+  ALLOCATE(u_each_cat(mgr,ngr,nj,ncat))
+  ALLOCATE(v_each_cat,t_each_cat,q_each_cat,qi_each_cat,e_each_cat,ep_each_cat,uw_each_cat,vw_each_cat,wt_each_cat, &
+    wq_each_cat, wqi_each_cat, km_each_cat, kh_each_cat, p_each_cat,tld_each_cat, mold = u_each_cat)
   print *, "allocated 2"
-  ALLOCATE(u_tmp2(nj))
-  ALLOCATE(v_tmp2,t_tmp2,q_tmp2,qi_tmp2,e_tmp2,ep_tmp2,uw_tmp2,vw_tmp2, &
-    wt_tmp2,wq_tmp2,wqi_tmp2,km_tmp2,kh_tmp2,p_tmp2,tld_tmp2,mold=u_tmp2)
+  ALLOCATE(u_sum_cat(nj))
+  ALLOCATE(v_sum_cat,t_sum_cat,q_sum_cat,qi_sum_cat,e_sum_cat,ep_sum_cat,uw_sum_cat,vw_sum_cat, &
+    wt_sum_cat,wq_sum_cat,wqi_sum_cat,km_sum_cat,kh_sum_cat,p_sum_cat,tld_sum_cat,mold=u_sum_cat)
   print *, "allocated 3"
-  ALLOCATE(blht_tmp(mgr,ngr,ncat))
-  ALLOCATE(rif_blht_tmp,ustar_tmp,ice_snow_thick,mold=blht_tmp)
+  ALLOCATE(blht_each_cat(mgr,ngr,ncat))
+  ALLOCATE(rif_blht_each_cat,ustar_each_cat,ice_snow_thick,mold=blht_each_cat)
   print *, "allocated 4"
 
   ALLOCATE(t_hPa(mgr,ngr,nplev))
@@ -557,25 +557,25 @@ PROGRAM ABL
 
       ! Now initialise for later
       do n_si = 1,ncat
-        u_tmp(m,n,:,n_si) = u(m,n,:)
-        v_tmp(m,n,:,n_si) = v(m,n,:)
-        t_tmp(m,n,:,n_si) = t(m,n,:)
-        q_tmp(m,n,:,n_si) = q(m,n,:)
-        qi_tmp(m,n,:,n_si) = qi(m,n,:)
-        e_tmp(m,n,:,n_si) = e(m,n,:)
-        ep_tmp(m,n,:,n_si) = ep(m,n,:)
-        uw_tmp(m,n,:,n_si) = uw(m,n,:)
-        vw_tmp(m,n,:,n_si) = vw(m,n,:)
-        wt_tmp(m,n,:,n_si) = wt(m,n,:)
-        wq_tmp(m,n,:,n_si) = wq(m,n,:)
-        wqi_tmp(m,n,:,n_si) = wqi(m,n,:)
-        km_tmp(m,n,:,n_si) = km(m,n,:)
-        kh_tmp(m,n,:,n_si) = kh(m,n,:)
-        ustar_tmp(m,n,n_si) = ustar(m,n)
-        p_tmp(m,n,:,n_si) = p(m,n,:)
-        tld_tmp(m,n,:,n_si) = tld(m,n,:)
-        blht_tmp(m,n,n_si) = blht(m,n)
-        rif_blht_tmp(m,n,n_si) = rif_blht(m,n)
+        u_each_cat(m,n,:,n_si) = u(m,n,:)
+        v_each_cat(m,n,:,n_si) = v(m,n,:)
+        t_each_cat(m,n,:,n_si) = t(m,n,:)
+        q_each_cat(m,n,:,n_si) = q(m,n,:)
+        qi_each_cat(m,n,:,n_si) = qi(m,n,:)
+        e_each_cat(m,n,:,n_si) = e(m,n,:)
+        ep_each_cat(m,n,:,n_si) = ep(m,n,:)
+        uw_each_cat(m,n,:,n_si) = uw(m,n,:)
+        vw_each_cat(m,n,:,n_si) = vw(m,n,:)
+        wt_each_cat(m,n,:,n_si) = wt(m,n,:)
+        wq_each_cat(m,n,:,n_si) = wq(m,n,:)
+        wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)
+        km_each_cat(m,n,:,n_si) = km(m,n,:)
+        kh_each_cat(m,n,:,n_si) = kh(m,n,:)
+        ustar_each_cat(m,n,n_si) = ustar(m,n)
+        p_each_cat(m,n,:,n_si) = p(m,n,:)
+        tld_each_cat(m,n,:,n_si) = tld(m,n,:)
+        blht_each_cat(m,n,n_si) = blht(m,n)
+        rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)
       enddo
  
       print *, "T",t(m,n,:)
@@ -1029,27 +1029,27 @@ PROGRAM ABL
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
 
                 !print *, "about to integrate -----------", n_si
-                !print *, "t_test ",m,n," t_tmp in ",t_tmp(m,n,:,n_si)
+                !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
                 !print *, "t_test ",m,n," t outside ",t(m,n,:) ! for n_si == 1, these should be the same. For n_si == 2, not used...
                 !print *,  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si)
-                !print *,  u_tmp(m,n,:,n_si)
-                !print *,  v_tmp(m,n,:,n_si)
-                !print *,  q_tmp(m,n,:,n_si)
-                !print *, qi_tmp(m,n,:,n_si) 
-                !print *,  e_tmp(m,n,:,n_si)
-                !print *, ep_tmp(m,n,:,n_si)
-                !print *,  uw_tmp(m,n,:,n_si)
-                !print *,  vw_tmp(m,n,:,n_si)
-                !print *, wt_tmp(m,n,:,n_si)
-                !print *,  wq_tmp(m,n,:,n_si)
-                !print *, wqi_tmp(m,n,:,n_si)
-                !print *, km_tmp(m,n,:,n_si)
-                !print *, kh_tmp(m,n,:,n_si)
-                !print *, ustar_tmp(m,n,n_si)
-                !print *,  p_tmp(m,n,:,n_si)
-                !print *, tld_tmp(m,n,:,n_si) 
-                !print *,  blht_tmp(m,n,n_si)
-                !print *, rif_blht_tmp(m,n,n_si)
+                !print *,  u_each_cat(m,n,:,n_si)
+                !print *,  v_each_cat(m,n,:,n_si)
+                !print *,  q_each_cat(m,n,:,n_si)
+                !print *, qi_each_cat(m,n,:,n_si) 
+                !print *,  e_each_cat(m,n,:,n_si)
+                !print *, ep_each_cat(m,n,:,n_si)
+                !print *,  uw_each_cat(m,n,:,n_si)
+                !print *,  vw_each_cat(m,n,:,n_si)
+                !print *, wt_each_cat(m,n,:,n_si)
+                !print *,  wq_each_cat(m,n,:,n_si)
+                !print *, wqi_each_cat(m,n,:,n_si)
+                !print *, km_each_cat(m,n,:,n_si)
+                !print *, kh_each_cat(m,n,:,n_si)
+                !print *, ustar_each_cat(m,n,n_si)
+                !print *,  p_each_cat(m,n,:,n_si)
+                !print *, tld_each_cat(m,n,:,n_si) 
+                !print *,  blht_each_cat(m,n,n_si)
+                !print *, rif_blht_each_cat(m,n,n_si)
                 print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
@@ -1069,46 +1069,46 @@ PROGRAM ABL
                   nv,                                                       & ! Always 6?
                   dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
                   sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
-                  u_tmp(m,n,:,n_si), v_tmp(m,n,:,n_si), t_tmp(m,n,:,n_si), &
-                  q_tmp(m,n,:,n_si), qi_tmp(m,n,:,n_si),        & ! prognostics
-                  e_tmp(m,n,:,n_si), ep_tmp(m,n,:,n_si), uw_tmp(m,n,:,n_si), &
-                  vw_tmp(m,n,:,n_si), wt_tmp(m,n,:,n_si),     & ! prognostics
-                  wq_tmp(m,n,:,n_si), wqi_tmp(m,n,:,n_si), km_tmp(m,n,:,n_si), &
-                  kh_tmp(m,n,:,n_si), ustar_tmp(m,n,n_si),  & ! prognostics
-                  p_tmp(m,n,:,n_si), tld_tmp(m,n,:,n_si), & 
-                  blht_tmp(m,n,n_si), rif_blht_tmp(m,n,n_si),blht_max(m,n),           &  ! prognostics
+                  u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si), &
+                  q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),        & ! prognostics
+                  e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si), &
+                  vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),     & ! prognostics
+                  wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si), &
+                  kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),  & ! prognostics
+                  p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), & 
+                  blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
                   !u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
                   !e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
                   !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
                   !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si))             ! for "soil" temperatures
-                !print *, "t_test ",m,n," t_tmp out ",t_tmp(m,n,:,n_si), n_si
+                !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
             enddo
 
             !! After each loop, make sure we update the main arrays with a
             !merged column. BUT only use this merged array to force the next
             !timestep if it is a nextsim coupling timestep and we have new ice
             !inputs
-            u_tmp2(:) = 0
-            v_tmp2(:) = 0
-            t_tmp2(:) = 0
-            q_tmp2(:) = 0
-            qi_tmp2(:) = 0
-            e_tmp2(:) = 0
-            ep_tmp2(:) = 0
-            uw_tmp2(:) = 0
-            vw_tmp2(:) = 0
-            wt_tmp2(:) = 0
-            wq_tmp2(:) = 0
-            wqi_tmp2(:) = 0
-            km_tmp2(:) = 0
-            kh_tmp2(:) = 0
-            ustar_tmp2 = 0
-            p_tmp2(:) = 0
-            tld_tmp2(:) = 0
-            blht_tmp2 = 0
-            rif_blht_tmp2 = 0
+            u_sum_cat(:) = 0
+            v_sum_cat(:) = 0
+            t_sum_cat(:) = 0
+            q_sum_cat(:) = 0
+            qi_sum_cat(:) = 0
+            e_sum_cat(:) = 0
+            ep_sum_cat(:) = 0
+            uw_sum_cat(:) = 0
+            vw_sum_cat(:) = 0
+            wt_sum_cat(:) = 0
+            wq_sum_cat(:) = 0
+            wqi_sum_cat(:) = 0
+            km_sum_cat(:) = 0
+            kh_sum_cat(:) = 0
+            ustar_sum_cat = 0
+            p_sum_cat(:) = 0
+            tld_sum_cat(:) = 0
+            blht_sum_cat = 0
+            rif_blht_sum_cat = 0
 
             area_conc_ow = 1.
             do n_si = 1, ncat
@@ -1123,74 +1123,74 @@ PROGRAM ABL
                 ! for this last one, assume that all categories are independent! i.e. for nextsim mooring output (not coupled, but used for testing), sit + sit_thin + ocean = 1
               endif
               !print *, "check! area_conc for n_si ",n_si,area_conc
-              u_tmp2 = u_tmp2 + u_tmp(m,n,:,n_si)*area_conc
-              v_tmp2 = v_tmp2 + v_tmp(m,n,:,n_si)*area_conc
-              t_tmp2 = t_tmp2 + t_tmp(m,n,:,n_si)*area_conc
-              q_tmp2 = q_tmp2 + q_tmp(m,n,:,n_si)*area_conc
-              qi_tmp2 = qi_tmp2 + qi_tmp(m,n,:,n_si)*area_conc
-              e_tmp2 = e_tmp2 + e_tmp(m,n,:,n_si)*area_conc
-              ep_tmp2 = ep_tmp2 + ep_tmp(m,n,:,n_si)*area_conc
-              uw_tmp2 = uw_tmp2 + uw_tmp(m,n,:,n_si)*area_conc
-              vw_tmp2 = vw_tmp2 + vw_tmp(m,n,:,n_si)*area_conc
-              wt_tmp2 = wt_tmp2 + wt_tmp(m,n,:,n_si)*area_conc
-              wq_tmp2 = wq_tmp2 + wq_tmp(m,n,:,n_si)*area_conc
-              wqi_tmp2 = wqi_tmp2 + wqi_tmp(m,n,:,n_si)*area_conc
-              km_tmp2 = km_tmp2 + km_tmp(m,n,:,n_si)*area_conc
-              kh_tmp2 = kh_tmp2 + kh_tmp(m,n,:,n_si)*area_conc
-              ustar_tmp2 = ustar_tmp2 + ustar_tmp(m,n,n_si)*area_conc
-              p_tmp2 = p_tmp2 + p_tmp(m,n,:,n_si)*area_conc
-              tld_tmp2 = tld_tmp2 + tld_tmp(m,n,:,n_si)*area_conc
-              blht_tmp2 = blht_tmp2 + blht_tmp(m,n,n_si)*area_conc
-              rif_blht_tmp2 = rif_blht_tmp2 + rif_blht_tmp(m,n,n_si)*area_conc
+              u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
+              v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
+              t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
+              q_sum_cat = q_sum_cat + q_each_cat(m,n,:,n_si)*area_conc
+              qi_sum_cat = qi_sum_cat + qi_each_cat(m,n,:,n_si)*area_conc
+              e_sum_cat = e_sum_cat + e_each_cat(m,n,:,n_si)*area_conc
+              ep_sum_cat = ep_sum_cat + ep_each_cat(m,n,:,n_si)*area_conc
+              uw_sum_cat = uw_sum_cat + uw_each_cat(m,n,:,n_si)*area_conc
+              vw_sum_cat = vw_sum_cat + vw_each_cat(m,n,:,n_si)*area_conc
+              wt_sum_cat = wt_sum_cat + wt_each_cat(m,n,:,n_si)*area_conc
+              wq_sum_cat = wq_sum_cat + wq_each_cat(m,n,:,n_si)*area_conc
+              wqi_sum_cat = wqi_sum_cat + wqi_each_cat(m,n,:,n_si)*area_conc
+              km_sum_cat = km_sum_cat + km_each_cat(m,n,:,n_si)*area_conc
+              kh_sum_cat = kh_sum_cat + kh_each_cat(m,n,:,n_si)*area_conc
+              ustar_sum_cat = ustar_sum_cat + ustar_each_cat(m,n,n_si)*area_conc
+              p_sum_cat = p_sum_cat + p_each_cat(m,n,:,n_si)*area_conc
+              tld_sum_cat = tld_sum_cat + tld_each_cat(m,n,:,n_si)*area_conc
+              blht_sum_cat = blht_sum_cat + blht_each_cat(m,n,n_si)*area_conc
+              rif_blht_sum_cat = rif_blht_sum_cat + rif_blht_each_cat(m,n,n_si)*area_conc
 
-              blht_max(m,n) = MAX(blht_max(m,n), blht_tmp(m,n,n_si))
+              blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
             enddo
 
             ! now, add the new averaged arrays back to those to be carried
             ! forward
-            u(m,n,:) = u_tmp2
-            v(m,n,:) = v_tmp2
-            t(m,n,:) = t_tmp2
+            u(m,n,:) = u_sum_cat
+            v(m,n,:) = v_sum_cat
+            t(m,n,:) = t_sum_cat
             !print *, "t_test ",m,n," t at end ",t(m,n,:)
-            q(m,n,:) = q_tmp2 
-            qi(m,n,:) = qi_tmp2 
-            e(m,n,:) = e_tmp2  
-            ep(m,n,:) = ep_tmp2 
-            uw(m,n,:) = uw_tmp2 
-            vw(m,n,:) = vw_tmp2 
-            wt(m,n,:) = wt_tmp2 
-            wq(m,n,:) = wq_tmp2 
-            wqi(m,n,:) = wqi_tmp2 
-            km(m,n,:) = km_tmp2 
-            kh(m,n,:) = kh_tmp2 
-            ustar(m,n) = ustar_tmp2 
-            p(m,n,:) = p_tmp2 
-            tld(m,n,:) = tld_tmp2 
-            blht(m,n) = blht_tmp2 
-            rif_blht(m,n) = rif_blht_tmp2 
+            q(m,n,:) = q_sum_cat 
+            qi(m,n,:) = qi_sum_cat 
+            e(m,n,:) = e_sum_cat  
+            ep(m,n,:) = ep_sum_cat 
+            uw(m,n,:) = uw_sum_cat 
+            vw(m,n,:) = vw_sum_cat 
+            wt(m,n,:) = wt_sum_cat 
+            wq(m,n,:) = wq_sum_cat 
+            wqi(m,n,:) = wqi_sum_cat 
+            km(m,n,:) = km_sum_cat 
+            kh(m,n,:) = kh_sum_cat 
+            ustar(m,n) = ustar_sum_cat 
+            p(m,n,:) = p_sum_cat 
+            tld(m,n,:) = tld_sum_cat 
+            blht(m,n) = blht_sum_cat 
+            rif_blht(m,n) = rif_blht_sum_cat 
 
             ! if (do_merge_or_nudge.eq.1) then
             !   do n_si = 1,ncat
             !     ! Now reinitialise (but will this be overwritten anyway?)
-            !     u_tmp(m,n,:,n_si) = u(m,n,:)*1.
-            !     v_tmp(m,n,:,n_si) = v(m,n,:)*1.
-            !     t_tmp(m,n,:,n_si) = t(m,n,:)*1.
-            !     q_tmp(m,n,:,n_si) = q(m,n,:)*1.
-            !     qi_tmp(m,n,:,n_si) = qi(m,n,:)*1.
-            !     e_tmp(m,n,:,n_si) = e(m,n,:)*1.
-            !     ep_tmp(m,n,:,n_si) = ep(m,n,:)*1.
-            !     uw_tmp(m,n,:,n_si) = uw(m,n,:)*1.
-            !     vw_tmp(m,n,:,n_si) = vw(m,n,:)*1.
-            !     wt_tmp(m,n,:,n_si) = wt(m,n,:)*1.
-            !     wq_tmp(m,n,:,n_si) = wq(m,n,:)*1.
-            !     wqi_tmp(m,n,:,n_si) = wqi(m,n,:)*1.
-            !     km_tmp(m,n,:,n_si) = km(m,n,:)*1.
-            !     kh_tmp(m,n,:,n_si) = kh(m,n,:)*1.
-            !     ustar_tmp(m,n,n_si) = ustar(m,n)*1.
-            !     p_tmp(m,n,:,n_si) = p(m,n,:)*1.
-            !     tld_tmp(m,n,:,n_si) = tld(m,n,:)*1.
-            !     blht_tmp(m,n,n_si) = blht(m,n)*1.
-            !     rif_blht_tmp(m,n,n_si) = rif_blht(m,n)*1.
+            !     u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
+            !     v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
+            !     t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
+            !     q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
+            !     qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
+            !     e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
+            !     ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
+            !     uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
+            !     vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
+            !     wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
+            !     wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
+            !     wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
+            !     km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
+            !     kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
+            !     ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
+            !     p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
+            !     tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
+            !     blht_each_cat(m,n,n_si) = blht(m,n)*1.
+            !     rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
             !   enddo
             ! endif 
        
@@ -1200,7 +1200,7 @@ PROGRAM ABL
         time = time + dt;
         coupling_cnt = coupling_cnt + ds
         print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-        print *, "t, t_tmp",t(1,1,1),t_tmp(1,1,1,0)
+        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,0)
 
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
@@ -1232,28 +1232,28 @@ PROGRAM ABL
           call Met%append_var("qi", qi)
   
           call Met_SI1%append_time(time)
-          call Met_SI1%append_var("u", u_tmp(:,:,:,1))
-          call Met_SI1%append_var("v", v_tmp(:,:,:,1))
-          call Met_SI1%append_var("t", t_tmp(:,:,:,1))
-          call Met_SI1%append_var("p", p_tmp(:,:,:,1))
-          call Met_SI1%append_var("q", q_tmp(:,:,:,1))
-          call Met_SI1%append_var("qi", qi_tmp(:,:,:,1))
+          call Met_SI1%append_var("u", u_each_cat(:,:,:,1))
+          call Met_SI1%append_var("v", v_each_cat(:,:,:,1))
+          call Met_SI1%append_var("t", t_each_cat(:,:,:,1))
+          call Met_SI1%append_var("p", p_each_cat(:,:,:,1))
+          call Met_SI1%append_var("q", q_each_cat(:,:,:,1))
+          call Met_SI1%append_var("qi", qi_each_cat(:,:,:,1))
   
           call Met_SI2%append_time(time)
-          call Met_SI2%append_var("u", u_tmp(:,:,:,2))
-          call Met_SI2%append_var("v", v_tmp(:,:,:,2))
-          call Met_SI2%append_var("t", t_tmp(:,:,:,2))
-          call Met_SI2%append_var("p", p_tmp(:,:,:,2))
-          call Met_SI2%append_var("q", q_tmp(:,:,:,2))
-          call Met_SI2%append_var("qi", qi_tmp(:,:,:,2))
+          call Met_SI2%append_var("u", u_each_cat(:,:,:,2))
+          call Met_SI2%append_var("v", v_each_cat(:,:,:,2))
+          call Met_SI2%append_var("t", t_each_cat(:,:,:,2))
+          call Met_SI2%append_var("p", p_each_cat(:,:,:,2))
+          call Met_SI2%append_var("q", q_each_cat(:,:,:,2))
+          call Met_SI2%append_var("qi", qi_each_cat(:,:,:,2))
   
           call Met_SI3%append_time(time)
-          call Met_SI3%append_var("u", u_tmp(:,:,:,3))
-          call Met_SI3%append_var("v", v_tmp(:,:,:,3))
-          call Met_SI3%append_var("t", t_tmp(:,:,:,3))
-          call Met_SI3%append_var("p", p_tmp(:,:,:,3))
-          call Met_SI3%append_var("q", q_tmp(:,:,:,3))
-          call Met_SI3%append_var("qi", qi_tmp(:,:,:,3))
+          call Met_SI3%append_var("u", u_each_cat(:,:,:,3))
+          call Met_SI3%append_var("v", v_each_cat(:,:,:,3))
+          call Met_SI3%append_var("t", t_each_cat(:,:,:,3))
+          call Met_SI3%append_var("p", p_each_cat(:,:,:,3))
+          call Met_SI3%append_var("q", q_each_cat(:,:,:,3))
+          call Met_SI3%append_var("qi", qi_each_cat(:,:,:,3))
   
         ENDIF
         ! I am doing this here rather than in the previous loop because otherwise Met_SI* are not output correctly
@@ -1263,25 +1263,25 @@ PROGRAM ABL
 !             if (do_nudge_not_merge.eq.0) then
               do n_si = 1,ncat
                 ! Now reinitialise (but will this be overwritten anyway?)
-                u_tmp(m,n,:,n_si) = u(m,n,:)*1.
-                v_tmp(m,n,:,n_si) = v(m,n,:)*1.
-                t_tmp(m,n,:,n_si) = t(m,n,:)*1.
-                q_tmp(m,n,:,n_si) = q(m,n,:)*1.
-                qi_tmp(m,n,:,n_si) = qi(m,n,:)*1.
-                e_tmp(m,n,:,n_si) = e(m,n,:)*1.
-                ep_tmp(m,n,:,n_si) = ep(m,n,:)*1.
-                uw_tmp(m,n,:,n_si) = uw(m,n,:)*1.
-                vw_tmp(m,n,:,n_si) = vw(m,n,:)*1.
-                wt_tmp(m,n,:,n_si) = wt(m,n,:)*1.
-                wq_tmp(m,n,:,n_si) = wq(m,n,:)*1.
-                wqi_tmp(m,n,:,n_si) = wqi(m,n,:)*1.
-                km_tmp(m,n,:,n_si) = km(m,n,:)*1.
-                kh_tmp(m,n,:,n_si) = kh(m,n,:)*1.
-                ustar_tmp(m,n,n_si) = ustar(m,n)*1.
-                p_tmp(m,n,:,n_si) = p(m,n,:)*1.
-                tld_tmp(m,n,:,n_si) = tld(m,n,:)*1.
-                blht_tmp(m,n,n_si) = blht(m,n)*1.
-                rif_blht_tmp(m,n,n_si) = rif_blht(m,n)*1.
+                u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
+                v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
+                t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
+                q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
+                qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
+                e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
+                ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
+                uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
+                vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
+                wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
+                wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
+                wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
+                km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
+                kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
+                ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
+                p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
+                tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
+                blht_each_cat(m,n,n_si) = blht(m,n)*1.
+                rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
               enddo
             endif 
           enddo

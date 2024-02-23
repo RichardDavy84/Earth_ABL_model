@@ -1,1 +1,25 @@
-make.macro_FramHR
+# Local settings for the Makefile
+
+FC = ifort
+# FC = mpiifort
+
+# MODFLAG should be -J gfort and -module for ifort
+# It's for the option to tell the compiler where to place module files
+MODFLAG = -module
+
+tmp_dir=/cluster/projects/nn9878k/hregan/ABL/Earth_ABL_model #local_settings
+#tmp_dir=/cluster/home/hregan/ABL/Earth_ABL_model #local_settings
+
+#HDF_ROOT=/cluster/software/HDF5/1.10.1-intel-2018a
+HDF_ROOT=/cluster/software/HDF5/1.12.2-iimpi-2022a
+#HDF_ROOT=/cluster/software/HDF5/1.12.1-intel-2022b
+INC_HDF = -I${HDF_ROOT}/include
+LIB_HDF = -L${HDF_ROOT}/lib -lhdf5 -L${HDF_ROOT}/lib -lhdf5_hl
+
+LIB_NC_FROOT=/cluster/software/netCDF-Fortran/4.6.0-iimpi-2022a
+LIB_NC_CROOT=/cluster/software/netCDF/4.9.0-iimpi-2022a
+LIB_NC = -L${LIB_NC_FROOT}/lib -lnetcdff -L${LIB_NC_CROOT}/lib64 -lnetcdf
+
+FFLAGS = -g -I${tmp_dir} # -real-size 64 
+F90FLAGS = -g -I${tmp_dir} # -real-size 64
+LDFLAGS = -L${tmp_dir} ${LIB_HDF} ${INC_HDF} ${LIB_NC} 

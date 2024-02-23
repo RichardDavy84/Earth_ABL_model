@@ -243,26 +243,21 @@ PROGRAM ABL
   ALLOCATE(tld(mgr,ngr,nj))
   ALLOCATE(u, v, t, q, qi, e, ep, uw, vw, wt, wq, wqi, km, kh, p, qold, qiold, &
     theta, mold = tld)
-  print *, "allocated 1"
 
   ALLOCATE(u_each_cat(mgr,ngr,nj,ncat))
   ALLOCATE(v_each_cat,t_each_cat,q_each_cat,qi_each_cat,e_each_cat,ep_each_cat,uw_each_cat,vw_each_cat,wt_each_cat, &
     wq_each_cat, wqi_each_cat, km_each_cat, kh_each_cat, p_each_cat,tld_each_cat, mold = u_each_cat)
-  print *, "allocated 2"
   ALLOCATE(u_sum_cat(nj))
   ALLOCATE(v_sum_cat,t_sum_cat,q_sum_cat,qi_sum_cat,e_sum_cat,ep_sum_cat,uw_sum_cat,vw_sum_cat, &
     wt_sum_cat,wq_sum_cat,wqi_sum_cat,km_sum_cat,kh_sum_cat,p_sum_cat,tld_sum_cat,mold=u_sum_cat)
-  print *, "allocated 3"
   ALLOCATE(blht_each_cat(mgr,ngr,ncat))
   ALLOCATE(rif_blht_each_cat,ustar_each_cat,ice_snow_thick,mold=blht_each_cat)
-  print *, "allocated 4"
 
   ALLOCATE(t_hPa(mgr,ngr,nplev))
   ALLOCATE(u_hPa,v_hPa,mold=t_hPa)
 
   ALLOCATE(dedzs(mgr,ngr,ni,ncat))
   ALLOCATE(tsoil,zsoil,mold=dedzs)
-  print *, "allocated 5"
 
   ! Initialise input files and read initial field
   ! example code for p0
@@ -271,7 +266,6 @@ PROGRAM ABL
   call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  print *, "initialise p0, t0, q0"
 
 !  hPa(1)=700.
 !  hPa(2)=750.
@@ -372,7 +366,6 @@ PROGRAM ABL
   call v1000_next%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t1000_now%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t1000_next%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  print *, "initial vertical profiles"
 
   !! Added by HCR
   call sdlw_now%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
@@ -399,7 +392,6 @@ PROGRAM ABL
   call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  print *, "initial surface conditions"
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
@@ -407,7 +399,6 @@ PROGRAM ABL
   call sic_now%read_input(time, "Moorings")
   call sit_now%read_input(time, "Moorings")
   call snt_now%read_input(time, "Moorings")
-  print *, "initialised sea ice conditions"
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
@@ -415,7 +406,7 @@ PROGRAM ABL
   call q0%read_input(time0, "ERA")
   call u850_now%read_input(time0, "ERA")
   call v850_now%read_input(time0, "ERA")
-  print *, "initialised ERA"
+
   do m = 1, mgr
     do n = 1, ngr
 
@@ -492,8 +483,8 @@ PROGRAM ABL
           albedo(m,n,n_si) = 0.63 ! Albedo for thick ice (nextsim default)
           semis(m,n,n_si) = 0.996 ! Emissivity of ice, as in nextsim
         enddo
-        albedo(m,n,n_si) = 0.07 ! Albedo for ocean (nextsim default)
-        semis(m,n,n_si) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
+        albedo(m,n,ncat) = 0.07 ! Albedo for ocean (nextsim default)
+        semis(m,n,ncat) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
       else
         albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
         semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim

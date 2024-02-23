@@ -50,8 +50,8 @@ PROGRAM ABL
   !------------------------------------------------------------
 
   IMPLICIT none
-  INTEGER nj,nv,ni,ncat,n_si_cat
-  PARAMETER(nj=31,nv=6,ni=15,n_si_cat=3)
+  INTEGER nj,nv,ni,ncat,n_surf_cat
+  PARAMETER(nj=31,nv=6,ni=15) !,n_surf_cat=3) n_surf_cat now set in namelist
 !  PARAMETER(nj=31,nv=6,ni=11)
 
   INTEGER, PARAMETER :: dbl=8
@@ -62,7 +62,7 @@ PROGRAM ABL
   ! Time information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   type(datetime) :: time, next_time, time0, time1
-  type(timedelta) :: dt, coupling_dt
+  type(timedelta) :: dt, merge_dt
 
   ! Variables for the three dimensional model
   ! Grid points of the model are in a 2D array
@@ -140,7 +140,7 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_or_nudge, do_tiling, coupling_seconds, do_nudge_not_merge
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -150,7 +150,7 @@ PROGRAM ABL
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
-  INTEGER :: coupling_ds, coupling_cnt
+  INTEGER :: merge_ds, merge_cnt
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
   REAL :: ha, tint
 !  INTEGER, PARAMETER :: hoursec = 86400
@@ -158,24 +158,41 @@ PROGRAM ABL
   REAL, PARAMETER :: pi=4.*ATAN(1.)
   REAL(KIND=8) :: slon
 
+  INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
+  REAL :: init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+
 !  REAL :: height_hPa
-  
+ 
+  ! Read basic namelist
+  open(unit=10, file='setup_info.nml', status='old')
+  namelist /grid_info/ fname, lon_name, lat_name, mask_name 
+  namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
+  namelist /merge_info/ do_tiling, merge_seconds
+  namelist /seaice_info/ n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+
+  read(10, nml=grid_info)
+  read(10, nml=time_info)
+  read(10, nml=merge_info)
+  read(10, nml=seaice_info)
+
+  close(10)
 
   ! Initialization parameters (for compatibility with REAL*8 in function)
   !REAL(KIND=dbl) :: u_in, v_in, p_in, q_in, t_in
-  mnt_out = 10 !5
-  hr_out = 1
+  !! Now read in namelist
+  ! mnt_out = 10 !5
+  ! hr_out = 1
 
-  do_tiling = 1 ! This is for if we want to tile the output or not
+  ! do_tiling = 0 ! This is for if we want to tile the output or not
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialise the grid
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! TODO: These four parameters should be read from a namelist
-  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc"
-  lon_name = "plon"
-  lat_name = "plat"
-  mask_name = "mask"
+  !fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc"
+  !lon_name = "plon"
+  !lat_name = "plat"
+  !mask_name = "mask"
 
   CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat,mask)
 
@@ -187,9 +204,12 @@ PROGRAM ABL
   print *, "maxval(rlat) = ", maxval(rlat), "minval(rlat) = ", minval(rlat)
 
   ! TODO: Time information from namelist
-  time0 = datetime(2007,01,01)
-  time1 = datetime(2007,01,02)
-  dt = timedelta(seconds=10)
+  ! time0 = datetime(2007,01,01)
+  ! time1 = datetime(2007,01,01)
+  ! dt = timedelta(seconds=10)
+  time0 = datetime(s_year,s_month,s_day)
+  time1 = datetime(e_year,e_month,e_day)
+  dt = timedelta(seconds=timestep)
   ds = dt%getSeconds()
   nmts = hoursec/ds
   print *, "eventually will have this number of minutes run ",nmts
@@ -198,20 +218,21 @@ PROGRAM ABL
   endif
   time = time0
 
-  coupling_seconds=read_coupling_timestep("./coupling_timestep.cfg")
-  print *, "coupling_seconds ",coupling_seconds
+  ! merge_seconds=read_merge_timestep("./merge_timestep.cfg")
+  ! print *, "merge_seconds ",merge_seconds
   ! coupling_dt=timedelta(seconds=900)
-  coupling_dt=timedelta(seconds=coupling_seconds)
-  coupling_ds=coupling_dt%getSeconds()
-  coupling_cnt=0
+  if (merge_seconds.gt.0) then
+    merge_dt=timedelta(seconds=merge_seconds)
+    merge_ds=merge_dt%getSeconds()
+  else
+    merge_ds=merge_seconds ! This means it will never be equal to merge_cnt, since merge_cnt is positive
+  endif
+  merge_cnt=0
   
-!  ! Here is an important setting!!! if 1, we nudge at the coupling timestep. If 0, we merge. I.e. default is merge
-!  do_nudge_not_merge = 1
-
   if (do_tiling.eq.0) then
     ncat = 1 ! check this works...
   else
-    ncat = n_si_cat
+    ncat = n_surf_cat
   endif
 
   !===================Allocate arrays
@@ -466,27 +487,49 @@ PROGRAM ABL
       ! Should this albedo ultimately be affected by the snow?
       print *, "future consideration is to include snow albedo"
       ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
-      albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
-      albedo(m,n,2) = 0.63 ! Albedo for thin ice... (what is nextsim default?)
-      albedo(m,n,3) = 0.07 ! Albedo for ocean (nextsim default)
-      semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
-      semis(m,n,2) = 0.996 ! Emissivity of ice, as in nextsim
-      semis(m,n,3) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
+      if (ncat.gt.1) then
+        do n_si = 1,ncat-1
+          albedo(m,n,n_si) = 0.63 ! Albedo for thick ice (nextsim default)
+          semis(m,n,n_si) = 0.996 ! Emissivity of ice, as in nextsim
+        enddo
+        albedo(m,n,n_si) = 0.07 ! Albedo for ocean (nextsim default)
+        semis(m,n,n_si) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
+      else
+        albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
+        semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
+      endif
+
+      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
 
       !!! Hack for now
       do n_si = 1,ncat
         z0(m,n,n_si) = 0.001 ! this is the surface roughness I believe
       enddo
-      sic(m,n,1) = 0.90 !0.50 ! 0.90
-      sit(m,n,1) = 2./sic(m,n,1)
-      snt(m,n,1) = 0.2/sic(m,n,1)
-      sic(m,n,2) = 0.05 !0.0 
-      sit(m,n,2) = 0.2/sic(m,n,2)
-      snt(m,n,2) = 0.02/sic(m,n,2)
-      sic(m,n,3) = 0. ! so this will always be 0, since it is open water?
-      sit(m,n,3) = 0.
-      snt(m,n,3) = 0.
-
+      ! Choose some initial sea ice conditions
+      sic(m,n,1) = init_sic !0.50 ! 0.90
+      if (init_sic.gt.0) then
+        sit(m,n,1) = init_sit/sic(m,n,1)
+        snt(m,n,1) = init_snt/sic(m,n,1)
+      else
+        sit(m,n,1) = 0.
+        snt(m,n,1) = 0.
+      endif
+      if (ncat.gt.1) then 
+          sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
+          sit(m,n,ncat) = 0.
+          snt(m,n,ncat) = 0.
+          if (ncat.gt.2) then
+              if (init_sic_young.gt.0) then
+                  sic(m,n,2) = init_sic_young  
+                  sit(m,n,2) = init_sit_young/sic(m,n,2)
+                  snt(m,n,2) = init_snt_young/sic(m,n,2)
+              else
+                  sic(m,n,2) = 0.
+                  sit(m,n,2) = 0.
+                  snt(m,n,2) = 0.
+              endif
+          endif
+      endif
       !  if (n_si.lt.ncat) then
       !    sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
       !    ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
@@ -551,6 +594,7 @@ PROGRAM ABL
         wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
         p(m,n,:), tld(m,n,:), ni,                                       &    ! prognostics
         dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick(m,n,1) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
+      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
       print *, "ustar from initialize: ",ustar(m,n)
       print *, "soil values: "
       print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
@@ -645,6 +689,7 @@ PROGRAM ABL
   call Met%add_var("qi", "zm")
   print *, "Initialised Met"
 
+  ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
   call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
   call Met_SI1%add_var("dummy", "zm")
   call Met_SI1%add_var("u", "zm")
@@ -654,23 +699,27 @@ PROGRAM ABL
   call Met_SI1%add_var("q", "zm")
   call Met_SI1%add_var("qi", "zm")
 
-  call Met_SI2%init('Met_SI2.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
-  call Met_SI2%add_var("dummy", "zm")
-  call Met_SI2%add_var("u", "zm")
-  call Met_SI2%add_var("v", "zm")
-  call Met_SI2%add_var("t", "zm")
-  call Met_SI2%add_var("p", "zm")
-  call Met_SI2%add_var("q", "zm")
-  call Met_SI2%add_var("qi", "zm")
-
-  call Met_SI3%init('Met_SI3.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
-  call Met_SI3%add_var("dummy", "zm")
-  call Met_SI3%add_var("u", "zm")
-  call Met_SI3%add_var("v", "zm")
-  call Met_SI3%add_var("t", "zm")
-  call Met_SI3%add_var("p", "zm")
-  call Met_SI3%add_var("q", "zm")
-  call Met_SI3%add_var("qi", "zm")
+  if (ncat.gt.1) then
+      call Met_SI2%init('Met_SI2.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+      call Met_SI2%add_var("dummy", "zm")
+      call Met_SI2%add_var("u", "zm")
+      call Met_SI2%add_var("v", "zm")
+      call Met_SI2%add_var("t", "zm")
+      call Met_SI2%add_var("p", "zm")
+      call Met_SI2%add_var("q", "zm")
+      call Met_SI2%add_var("qi", "zm")
+    
+      if (ncat.gt.2) then
+          call Met_SI3%init('Met_SI3.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+          call Met_SI3%add_var("dummy", "zm")
+          call Met_SI3%add_var("u", "zm")
+          call Met_SI3%add_var("v", "zm")
+          call Met_SI3%add_var("t", "zm")
+          call Met_SI3%add_var("p", "zm")
+          call Met_SI3%add_var("q", "zm")
+          call Met_SI3%add_var("qi", "zm")
+      endif
+  endif
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   print *, "Initialised"
@@ -762,6 +811,8 @@ PROGRAM ABL
   call sit_next%read_input(next_time, "Moorings")
   call snt_next%read_input(next_time, "Moorings")
 
+  print *, "ALBEDO, SEMIS, start loop 1a ",albedo
+  print *, "ALBEDO, SEMIS, start loop 1b ",semis
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
@@ -876,16 +927,18 @@ PROGRAM ABL
 !      print *, "u1 ",u(m,n,1)
 
       print *, "starting loop"
+      print *, "ALBEDO, SEMIS, start loop 2a ",albedo
+      print *, "ALBEDO, SEMIS, start loop 2b ",semis
       do jm = 1, nmts
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
         print *, "doing the Integration as jh, jm = ",jh,jm
 
-        if (coupling_cnt.eq.coupling_ds) then
-          do_merge_or_nudge = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
-          coupling_cnt = 0.
-          print *, "PROCEEDING WITH COUPLING"
+        if (merge_cnt.eq.merge_ds) then
+          do_merge_columns = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
+          merge_cnt = 0.
+          print *, "PROCEEDING WITH MERGING"
         else
-          do_merge_or_nudge = 0
+          do_merge_columns = 0
         endif
 
         do m = 1, mgr
@@ -908,7 +961,7 @@ PROGRAM ABL
 !           ANSWER: ultimately, these will be at the coupling timestep. Quicker
 !           to read in every m,n each timestep? Or store as a 2d array each
 !           coupling timestep?
-!            if (do_merge_or_nudge.eq.1) then
+!            if (do_merge_columns.eq.1) then
 !              sit = sit_now%get_point(m,n)
 !              snt = snt_now%get_point(m,n)
 !              sic = sic_now%get_point(m,n)
@@ -1026,7 +1079,10 @@ PROGRAM ABL
 
             do n_si = 1, ncat
 
+                print *, "HCRTil loop for integrate ",n_si
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
+                print *, "HCRTil compute_dzeta ",ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si),ni
+                print *, "ALBEDO, SEMIS, start loop 3 ",albedo(m,n,n_si),semis(m,n,n_si)
 
                 !print *, "about to integrate -----------", n_si
                 !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
@@ -1051,6 +1107,7 @@ PROGRAM ABL
                 !print *,  blht_each_cat(m,n,n_si)
                 !print *, rif_blht_each_cat(m,n,n_si)
                 print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
+                print *, "SEMIS is ", semis(m,n,n_si), " for n_si = ",n_si
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
@@ -1112,6 +1169,7 @@ PROGRAM ABL
 
             area_conc_ow = 1.
             do n_si = 1, ncat
+              print *, "HCRTil n_si = ",n_si
               if (do_tiling.eq.0) then
                 area_conc = 1.
               elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
@@ -1151,6 +1209,9 @@ PROGRAM ABL
             u(m,n,:) = u_sum_cat
             v(m,n,:) = v_sum_cat
             t(m,n,:) = t_sum_cat
+            print *, "updates: ",t_each_cat(m,n,1,:),t_sum_cat(1),t(m,n,1)
+            print *, "updates: ",t_each_cat(m,n,2,:),t_sum_cat(2),t(m,n,2)
+            print *, "updates: ",t_each_cat(m,n,3,:),t_sum_cat(3),t(m,n,3)
             !print *, "t_test ",m,n," t at end ",t(m,n,:)
             q(m,n,:) = q_sum_cat 
             qi(m,n,:) = qi_sum_cat 
@@ -1169,7 +1230,7 @@ PROGRAM ABL
             blht(m,n) = blht_sum_cat 
             rif_blht(m,n) = rif_blht_sum_cat 
 
-            ! if (do_merge_or_nudge.eq.1) then
+            ! if (do_merge_columns.eq.1) then
             !   do n_si = 1,ncat
             !     ! Now reinitialise (but will this be overwritten anyway?)
             !     u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
@@ -1198,9 +1259,9 @@ PROGRAM ABL
         enddo
 
         time = time + dt;
-        coupling_cnt = coupling_cnt + ds
+        merge_cnt = merge_cnt + ds
         print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,0)
+        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,1)
 
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
@@ -1230,7 +1291,10 @@ PROGRAM ABL
           call Met%append_var("p", p)
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
-  
+ 
+          print *, "outputting what t? ", t(1,1,1),t_each_cat(1,1,1,:)
+          print *, "outputting what t? ", t(1,1,2),t_each_cat(1,1,2,:)
+
           call Met_SI1%append_time(time)
           call Met_SI1%append_var("u", u_each_cat(:,:,:,1))
           call Met_SI1%append_var("v", v_each_cat(:,:,:,1))
@@ -1238,55 +1302,60 @@ PROGRAM ABL
           call Met_SI1%append_var("p", p_each_cat(:,:,:,1))
           call Met_SI1%append_var("q", q_each_cat(:,:,:,1))
           call Met_SI1%append_var("qi", qi_each_cat(:,:,:,1))
-  
-          call Met_SI2%append_time(time)
-          call Met_SI2%append_var("u", u_each_cat(:,:,:,2))
-          call Met_SI2%append_var("v", v_each_cat(:,:,:,2))
-          call Met_SI2%append_var("t", t_each_cat(:,:,:,2))
-          call Met_SI2%append_var("p", p_each_cat(:,:,:,2))
-          call Met_SI2%append_var("q", q_each_cat(:,:,:,2))
-          call Met_SI2%append_var("qi", qi_each_cat(:,:,:,2))
-  
-          call Met_SI3%append_time(time)
-          call Met_SI3%append_var("u", u_each_cat(:,:,:,3))
-          call Met_SI3%append_var("v", v_each_cat(:,:,:,3))
-          call Met_SI3%append_var("t", t_each_cat(:,:,:,3))
-          call Met_SI3%append_var("p", p_each_cat(:,:,:,3))
-          call Met_SI3%append_var("q", q_each_cat(:,:,:,3))
-          call Met_SI3%append_var("qi", qi_each_cat(:,:,:,3))
-  
+ 
+          if (ncat.gt.1) then 
+              call Met_SI2%append_time(time)
+              call Met_SI2%append_var("u", u_each_cat(:,:,:,2))
+              call Met_SI2%append_var("v", v_each_cat(:,:,:,2))
+              call Met_SI2%append_var("t", t_each_cat(:,:,:,2))
+              call Met_SI2%append_var("p", p_each_cat(:,:,:,2))
+              call Met_SI2%append_var("q", q_each_cat(:,:,:,2))
+              call Met_SI2%append_var("qi", qi_each_cat(:,:,:,2))
+
+              if (ncat.gt.2) then      
+                  call Met_SI3%append_time(time)
+                  call Met_SI3%append_var("u", u_each_cat(:,:,:,3))
+                  call Met_SI3%append_var("v", v_each_cat(:,:,:,3))
+                  call Met_SI3%append_var("t", t_each_cat(:,:,:,3))
+                  call Met_SI3%append_var("p", p_each_cat(:,:,:,3))
+                  call Met_SI3%append_var("q", q_each_cat(:,:,:,3))
+                  call Met_SI3%append_var("qi", qi_each_cat(:,:,:,3))
+              endif
+          endif
+
         ENDIF
         ! I am doing this here rather than in the previous loop because otherwise Met_SI* are not output correctly
-        do m = 1, mgr
-          do n = 1, ngr
-            if (do_merge_or_nudge.eq.1) then
-!             if (do_nudge_not_merge.eq.0) then
-              do n_si = 1,ncat
-                ! Now reinitialise (but will this be overwritten anyway?)
-                u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
-                v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
-                t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
-                q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
-                qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
-                e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
-                ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
-                uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
-                vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
-                wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
-                wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
-                wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
-                km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
-                kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
-                ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
-                p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
-                tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
-                blht_each_cat(m,n,n_si) = blht(m,n)*1.
-                rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
-              enddo
-            endif 
+        if (do_tiling.eq.1) then
+          do m = 1, mgr
+            do n = 1, ngr
+              if (do_merge_columns.eq.1) then
+                do n_si = 1,ncat
+                  ! Now reinitialise
+                  u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
+                  v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
+                  t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
+                  q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
+                  qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
+                  e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
+                  ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
+                  uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
+                  vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
+                  wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
+                  wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
+                  wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
+                  km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
+                  kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
+                  ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
+                  p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
+                  tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
+                  blht_each_cat(m,n,n_si) = blht(m,n)*1.
+                  rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
+                enddo
+              endif 
+            enddo
           enddo
-        enddo
-    
+        endif
+
         print *, "appended et and srfv_all"
       enddo
       ! print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
@@ -1330,25 +1399,25 @@ PROGRAM ABL
 
     END FUNCTION hourint
 
-    INTEGER FUNCTION read_coupling_timestep(filename) RESULT(out_coupling_timestep)
+    !INTEGER FUNCTION read_merge_timestep(filename) RESULT(out_merge_timestep)
 
-      character(len=*), intent(in) :: filename
+    !  character(len=*), intent(in) :: filename
 
-      integer :: unitN
-      integer :: ierr
+    !  integer :: unitN
+    !  integer :: ierr
 
-      open(unitN,file=filename,status='old',action='read',iostat=ierr)
+    !  open(unitN,file=filename,status='old',action='read',iostat=ierr)
 
-      if (ierr /= 0) then
-        write(*,*) "error: unable to open the file", filename
-        stop
-      endif
+    !  if (ierr /= 0) then
+    !    write(*,*) "error: unable to open the file", filename
+    !    stop
+    !  endif
    
-      read(unitN,*) out_coupling_timestep
+    !  read(unitN,*) out_merge_timestep
 
-      close(unitN)
+    !  close(unitN)
 
-    END FUNCTION read_coupling_timestep
+    !END FUNCTION read_merge_timestep
 
 
 END PROGRAM ABL

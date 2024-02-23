@@ -29,7 +29,6 @@ c***********************************************************************
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
      1    dedzs,tsoil,zsoil,dzeta)
-c     1    do_nudge_not_merge) 
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
 c     1    v750,t775,u775,v775,t800,u800,v800,t825,u825,v825,t850,
@@ -118,8 +117,6 @@ c      REAL*8 u_in,v_in
 c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
       REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
-
-      INTEGER do_nudge_not_merge
 
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
@@ -263,15 +260,7 @@ c      print *, "NEED TO MAKE THIS MORE ROBUST"
           t_Pa_to_z(jj)=t_hPa(12)
         endif
       enddo
-c      print *, "t before nudging ", t
 
-c     Now, do the actual nudging IF REQUIRED
-c      if (do_nudge_not_merge.eq.0) then !we want to do the nudging here, since
-      !we will be merging the columns (if ==1 then we nudge individual columns
-      !instead of merging them)
-c      print *, "BLHT"
-c      print *, blht
-c      print *, blht_max
       if (blht_max.lt.0.) then
           ! this means that the boundary layer height has not yet been
           ! computed - so just set it really high so that all are

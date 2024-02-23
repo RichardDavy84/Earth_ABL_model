@@ -21,7 +21,7 @@ c***********************************************************************
 
       SUBROUTINE Initialize_NeXtSIM_ABL(albedo,u_in,v_in,slon,semis,
      1    rlat,z0_in,
-     2    z0_ice,
+     2    ct_ice,
      3    taur,p0,q0,t0,Nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,
      4    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,ni,
      5    dedzs,tsoil,zsoil,dzeta,ice_snow_thick) 
@@ -43,7 +43,7 @@ C
 C.  nj,nv,dedzm,dedzt,zm,zt,	u,v,t,q,qi,	e,ep,uw,vw,wt,wq,wqi,km,kh,ustar 
 C-------------------------------------------------------------
 
-      use physics, only: ustar, z0c, z0, zref, ztop, eta1, deta, rlb,
+      use physics, only: ustar,ct_atmos,z0, zref, ztop, eta1, deta, rlb,
      1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
      2 rl0, tg, ug, vg, vk, zero
 
@@ -111,7 +111,7 @@ c      INTEGER np,nplev
 c      PARAMETER(nplev=12)
 c      REAL u_in(nplev),v_in(nplev)
       REAL ustar_in,z0_in,ds_in
-      REAL z0_ice,ice_snow_thick
+      REAL ct_ice,ice_snow_thick
 
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
@@ -165,12 +165,12 @@ c       rl0=.00027*ug/fc
 
 c---------Calculate grid mesh (zm,zt)
         rlb=80             ! =300 for nj=121, =100 for nj=241, =80 for nj=361
-        z0c=.1              ! =0.1 (Roughness for coordinate tranform)
+        ct_atmos=.1              ! =0.1 (Roughness for coordinate tranform)
         zref=0
         ztop=3000. ! Was 30000, but can be changed
 c        ztop=4000. ! Was 30000, but can be changed
-      eta1=alog(zref/z0c+1.)+zref/rlb
-      deta=(alog(ztop/z0c+1.)+ztop/rlb)/(nj-1.)
+      eta1=alog(zref/ct_atmos+1.)+zref/rlb
+      deta=(alog(ztop/ct_atmos+1.)+ztop/rlb)/(nj-1.)
 
         CALL subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
 
@@ -198,9 +198,9 @@ c---------Calculating initial profiles
      1      tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,nj)
           wlo=-vk*betag*wt(1)/ustar**3
 
-        call compute_dzeta(ice_snow_thick,z0_ice,dzeta,ni)
+        call compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni)
 c          dzeta=alog(.2/z0+1.)/(ni-1.)
-        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),z0_ice,ni)
+        call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),ct_ice,ni)
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')

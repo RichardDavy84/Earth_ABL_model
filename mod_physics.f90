@@ -10,7 +10,7 @@ module physics
   REAL betam,betah,gammam,gammah,pr
 
   ! The /constc/ common block (there should be a description of what it contains)
-  REAL z0c,z0,zref,ztop,eta1,deta,rlb
+  REAL ct_atmos,z0,zref,ztop,eta1,deta,rlb
 
   ! The /constus/ common block (there should be a description of what it contains)
   REAL tdif,wind,rlo

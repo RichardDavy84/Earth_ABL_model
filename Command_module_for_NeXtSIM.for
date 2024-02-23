@@ -23,12 +23,12 @@ c***********************************************************************
      1    ntlw, ntsw, mslhf, msshf,
      1    slon,
      1    semis,rlat,z0_in,
-     1    z0_ice,
+     1    ct_ice,
      1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
      1    sic, sit, snt, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
-     1    rif_blht,ni,
-     1    dedzs,tsoil,zsoil,dzeta) 
+     1    rif_blht,blht_max,ni,
+     1    dedzs,tsoil,zsoil,dzeta)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
 c     1    v750,t775,u775,v775,t800,u800,v800,t825,u825,v825,t850,
@@ -56,7 +56,7 @@ C------------------------------------------------------------
 C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
-      use physics, only: ustar, z0c, z0, zref, ztop, eta1, deta, rlb,
+      use physics, only: ustar,ct_atmos,z0, zref, ztop, eta1, deta, rlb,
      1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
      2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
      3 wqi0, wt0
@@ -81,7 +81,7 @@ C------------------------------------------------------------
       REAL zout(3),tout(3),wind,zwind
       CHARACTER*30 dname,fname
       DATA zout,zwind/0.25,0.5,1.,1.3/
-      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht,blht_nudge
+      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht,blht_nudge,blht_max
       REAL*8 forcing
 
       REAL dblht,dL
@@ -96,7 +96,7 @@ C------------------------------------------------------------
 
       REAL*8 slon
       REAL t850,height_t850,u_in,v_in
-      REAL albedo,semis,rlat
+      REAL albedo,semis,rlat,emis
       INTEGER Location
 c      REAL*8 u_in,v_in
       REAL ustar_in,z0_in
@@ -104,17 +104,19 @@ c      REAL*8 u_in,v_in
 
       INTEGER nplev
       INTEGER np,nloc,min_Loc,max_Loc,Loc_non_zero,min_zm,max_zm
+      INTEGER jj_justbelow
       PARAMETER(nplev=12)
       REAL t_hPa(nplev),u_hPa(nplev),v_hPa(nplev),hPa(nplev)
       REAL t_Pa_to_z(nj),u_Pa_to_z(nj),v_Pa_to_z(nj)
       INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
       REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
+      REAL nudge_justbelow_bl
       REAL zfrc_top,zfrc_bot,zfrc,rif_frac,hloc
 
 c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,z0_ice
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
@@ -183,6 +185,7 @@ c      nplev=12
        hPa(2)=975.
        hPa(1)=1000.
       nudge_above_bl=0.8
+      nudge_justbelow_bl=0.5
       nudge_below_bl=0.2
 cccccc
 c     INTERPOLATE
@@ -249,7 +252,7 @@ c            print *, "zfrc ",zfrc
         endif
       enddo
 
-      print *, "NEED TO MAKE THIS MORE ROBUST"
+c      print *, "NEED TO MAKE THIS MORE ROBUST"
       do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
         if (t_Pa_to_z(jj).eq.0.) then
           u_Pa_to_z(jj)=u_hPa(12)
@@ -258,59 +261,45 @@ c            print *, "zfrc ",zfrc
         endif
       enddo
 
-c      print *, "t(1) before nudging",t(1)
-c      print *, "t all before nudging",t
-c      print *, "min max loc",min_Loc,max_Loc
-      blht_nudge = blht
-c      print *, "blht for nudging ",blht
+      if (blht_max.lt.0.) then
+          ! this means that the boundary layer height has not yet been
+          ! computed - so just set it really high so that all are
+          ! tightly nudged to ERA5 to begin with
+          blht_nudge = zm(12)
+      else
+          blht_nudge = blht_max
+      endif
+c      print *, blht_nudge
+      jj_justbelow = min_Loc
+c      print *, jj_justbelow
       do jj=min_Loc,max_Loc
-        if(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
+          if(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
+              jj_justbelow = MAX(jj,jj_justbelow)        
+          endif
+      enddo
+c      print *, jj_justbelow
+c      print *, "NUDGE"
+      do jj=min_Loc,max_Loc
+         if ( jj.eq.jj_justbelow) then
+           nudge_fac=nudge_justbelow_bl
+         elseif(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
            nudge_fac=nudge_below_bl
-           t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
-           u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
-           v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
-        elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
+         elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
            nudge_fac=nudge_above_bl
-           t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
-           u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
-           v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
-        endif
+         endif
+         t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
+         u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
+         v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
       enddo
-      ! Finally, for any z values above ERA5 inputs, set u and v to be
-      ! the last ERA5 values
-c      print *, "t all mid nudging",t
-c      print *, "t from ERA pressure",t_Pa_to_z
-      do jj=max_Loc,nj
-        u(jj)=u_Pa_to_z(max_Loc)
-        v(jj)=v_Pa_to_z(max_Loc)
-        t(jj)=t_Pa_to_z(max_Loc)
-      enddo
-c      print *, "t all after nudging",t
-
-c      print *, "t(1) after nudging",t(1)
-      ! print *, "quick check of t profile ",t
-      ! print *, "quick check of u profile ",u
-      ! print *, "quick check of v profile ",v
-
-c       height_t850=(((85000./p0)**(1./5.257)-1.)*(t850))/0.0065     ! Use hypsometric formula to convert T850 to temperature at the nearest height level
-c       Location = minloc(abs(zm+height_t850),1)   HCRfix              ! Find the nearest height level that matches
-c       Location = minloc(abs(zm-height_t850),1)                 ! Find the nearest height level that matches
-c       Location = minloc(abs(zm-abs(height_t850)),1)               ! Find the nearest height level that matches THIS
-c       print *, "REFERENCE 850 p0,t850,height",height_t850,p0,t_hPa(6)
-c       print *, "location of 850 ",Location
-c       print *, "t, u, v ",t(Location),u(Location),v(Location)
-c       t(Location) = t(Location) + (1./5)*(t850 - t(Location)) ! Nudge towards ERA5 temperature data THIS
-c       u(Location) = u(Location) + (1./5)*(ug - u(Location))   ! Nudge towards ERA5 U_850 data THIS
-c       v(Location) = v(Location) + (1./5)*(vg - v(Location))   ! Nudge towards ERA5 V_850 data THIS
-c       print *, "u(Location) and ug ",u(Location),ug
-c       do jj=Location,nj
-c           u(jj) = ug   ! Nudge towards ERA5 U_850 data
-c           v(jj) = vg   ! Nudge towards ERA5 V_850 data
-c       enddo
-c       print *, "after setting: "
-c       print *, "t, u, v ",t(Location-1),u(Location-1),v(Location-1)
-c       print *, "t, u, v ",t(Location),u(Location),v(Location)
-c       print *, "t, u, v ",t(Location+1),u(Location+1),v(Location+1)
+       ! Finally, for any z values above ERA5 inputs, set u and v to be
+       ! the last ERA5 values
+       do jj=max_Loc,nj
+            u(jj)=u_Pa_to_z(max_Loc)
+            v(jj)=v_Pa_to_z(max_Loc)
+            t(jj)=t_Pa_to_z(max_Loc)
+       enddo
+c      enddo
+c       print *, "t after nudging ", t
 
 c---------Constants used in similarity functions
         betam =5.0                   ! Others : 6.00      4.7      5.0
@@ -419,6 +408,37 @@ c---------Calculating finite difference matrix and lu decomposition
         CALL coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,theta,u,v,uw,vw,dedzm,
      1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
 c---------Solving tridiagonal equations
+c        print *, "inputs to solve: "
+c             psi(j,1) = u (j) mean velocity                           *
+c             psi(j,2) = v (j) mean velocity                           *
+c             psi(j,3) = t (j) potential temperature                   *
+c             psi(j,4) = q (j) specific humidity                       *
+c             psi(j,5) = qi(j) icewater mixing ratio                   *
+c             psi(j,6) = e (j) turbulent kinetic energy (TKE)          *
+c        print *, "psi1 ",psi(:,1)
+c        print *, "psi2 ",psi(:,2)
+c        print *, "psi3 ",psi(:,3)
+c        print *, "psi4 ",psi(:,4)
+c        print *, "psi5 ",psi(:,5)
+c        print *, "psi6 ",psi(:,6)
+c        print *, "alfa ",alfa
+c        print *, "beta ",beta
+c        print *, "nv ",nv 
+c        print *, "nj ",nj
+c        do j=1,nj
+c          psi(j,1) = 0.
+c          psi(j,2) = 0.
+c          psi(j,3) = 0.
+c          psi(j,4) = 0.
+c          psi(j,5) = 0.
+c          psi(j,6) = 0.
+c        enddo
+c        print *, "psi1 ",psi(:,1)
+c        print *, "psi2 ",psi(:,2)
+c        print *, "psi3 ",psi(:,3)
+c        print *, "psi4 ",psi(:,4)
+c        print *, "psi5 ",psi(:,5)
+c        print *, "psi6 ",psi(:,6)
         CALL solve(psi,alfa,beta,nv,nj)
 c---------Updating the solution
         do 110 j=1,nj
@@ -434,6 +454,7 @@ c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
  120    CONTINUE
+c        print *, "t after solve ",t
 c---------Calculating turbulent length scales, eddy diffusivity & fluxes
         CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
      1              kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
@@ -452,7 +473,7 @@ c---------Calculating turbulent length scales, eddy diffusivity & fluxes
 c==============Calculating radiative heating rates hlw, hsw,
 c==============and surface fluxes dlw, dsw, sdir
           q(1)=q(2)     ! surface air-q is made equal to first air-level
-c	  albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
+	  albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
 c        CALL radia(p,q,t,tvis,hsw,hlw,fu,fd,su,sd,hu,hd,nj,
 c     1             s0c,sh,albedo1,cp,grav,sbc,semis,dlw,dsw,sdir)
 
@@ -466,6 +487,7 @@ c	  enddo
 c==============Calculating waterice cloud formation/sublimation
           qi(1)=qi(2)
         CALL swcond(p,q,qi,t,cp,latent,nj)
+c        print *, "t after swcond", t
 
 c==============Calculating ground energy fluxes
 c---------Computing short wave irradiation on slant ground
@@ -475,18 +497,20 @@ c          sw=(1.-albedo1)*swi                ! sw net rad at slant sfc, w/m2
 	    rho=1.*(p(1)+p(2))/rgas/(t(1)+t(2))
 c	    rho=100.*(p(1)+p(2))/rgas/(t(1)+t(2))
 
+c	  print *,"h0 inputs ",rho,cp,wt(1)                    ! sfc heat flux w/m2
 	  h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
           e0=rho*latent*wq(1)                ! sfc latent heat flux w/m2
 
 c         HERE lw is downward, NOT net - so need to compute!
 c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
-          print *, "INPUTS TO LW",lw,sbc,t(1)
-          lw_net = lw - sbc*0.996*(t(1)**4)
+c          print *, "INPUTS TO LW",lw,sbc,t(1)
+          lw_net = lw - sbc*semis*(t(1)**4)
           sw_net = (1.-albedo1)*sw
 c          gflux = (lw_net+ntsw+mslhf+msshf) 
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
+          print *,"ALBEDO gflux vals ",gflux,lw_net,sw_net,h0,e0,albedo1
 
-          print *, "FFF",lw_net,sw_net,h0,e0,tsoil(1)
+c          print *, "FFF",lw_net,sw_net,h0,e0,tsoil(1)
 c          print *, "FLUX DIFFERENCES: gflux",gflux
 c          print *, "FLUX DIFFERENCES: lw",lw_net,ntlw
 c          print *, "FLUX DIFFERENCES: sw",sw_net,ntsw
@@ -541,34 +565,36 @@ c       just for printiing!
 cc++++++++++++++Calculating soil temperature
 c       we don't need to do this update of dzeta every time step! ...
 c        ice_snow_thick = (sit + snt)/sic
-c        CALL compute_dzeta(ice_snow_thick,z0_ice,dzeta,ni) ! this is now done just before the loop
+c        CALL compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni) ! this is now done just before the loop
 
         if ((sit + snt).eq.0.) then
           t(1) = 271.15
+c          print *, "t after soiltdm", t
         else
-          print *, "inputs to soiltdm"
-          print *, "dedzs"
-          print *, dedzs
-          print *, "tsoil"
-          print *, tsoil
-          print *, "alternative, t(1) ",t(1)
-          print *, "zsoil"
-          print *, zsoil
-          print *, "dzeta"
-          print *, dzeta
-          print *, "snt"
-          print *, snt
-          print *, "gflux"
-          print *, gflux
-          print *, "ds"
-          print *, ds
-          print *, "ni"
-          print *, ni
+c          print *, "inputs to soiltdm"
+c          print *, "dedzs"
+c          print *, dedzs
+c          print *, "tsoil"
+c          print *, tsoil
+c          print *, "alternative, t(1) ",t(1)
+c          print *, "zsoil"
+c          print *, zsoil
+c          print *, "dzeta"
+c          print *, dzeta
+c          print *, "snt"
+c          print *, snt
+c          print *, "gflux"
+c          print *, gflux
+c          print *, "ds"
+c          print *, ds
+c          print *, "ni"
+c          print *, ni
           CALL soiltdm(dedzs,tsoil,zsoil,dzeta,snt,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
-          t(1)=tsoil(1)
+          t(1)=MAX(MIN(tsoil(1),350.),200.)
+c          print *, "t after soiltdm", t
         endif
         betag=grav/t(1)
-        print *, "TSOIL_NOW ",tsoil
+c        print *, "TSOIL_NOW ",tsoil
 
 cc++++++++++++++Calculating surface temperature over ice
 c       Before we go any further, we need to get an updated t(0) based on the new sea ice state from nextsim

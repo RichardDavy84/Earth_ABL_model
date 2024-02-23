@@ -1,0 +1,38 @@
+&grid_info
+  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc",
+  lon_name = "plon",
+  lat_name = "plat",
+  mask_name = "mask"
+/
+
+&time_info
+  s_year = 2007,
+  s_month = 1,
+  s_day = 1,
+  e_year = 2007,
+  e_month = 1,
+  e_day = 1,
+  timestep = 10, 
+  mnt_out = 10,
+  hr_out = 1
+/
+
+&merge_info
+  do_tiling = 1,
+  merge_seconds = -1 ! Set to -1 if never merging
+/
+
+&seaice_info
+  n_surf_cat = 3, ! if 1, no tiling. If > 1, the last category is open water
+  do_si_coupling = 0, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. ICs below!
+  ! This functionality needs to be adapted further! 
+  ! Particularly making do_si_coupling=1 work...
+  ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
+  init_sic = 0.90,
+  init_sic_young = 0.05,
+  init_sit = 2.,
+  init_sit_young = 0.2,
+  init_snt = 0.2,
+  init_snt_young = 0.02
+/
+!  

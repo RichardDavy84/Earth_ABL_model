@@ -28,7 +28,8 @@ c***********************************************************************
      1    sic, sit, snt, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
-     1    dedzs,tsoil,zsoil,dzeta)
+     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling,
+     1    gflux, lw_net, sw_net, h0, e0)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
 c     1    v750,t775,u775,v775,t800,u800,v800,t825,u825,v825,t850,
@@ -118,6 +119,10 @@ c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
       REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
+      INTEGER do_si_coupling
+
+      REAL Tsurf_tmp,hs
+
 c---------Declaration of variables and arrays - NEW
 c    angv - angle velocity
 c  albedo - albedo
@@ -139,7 +144,7 @@ c--------- Data on celestial dynamics
       INTEGER jd ! Julian day - this is input
 c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
-     1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
+     1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs,ERAgflux
       REAL lw_net, sw_net
       REAL ntsw, ntlw, mslhf, msshf
 c---------Function used for calculating saturated specific humidity
@@ -172,6 +177,7 @@ c      ds_in = ds_in
 c================== Nudge towards temperature and winds at 850 hPa
 c      nplev=12
 
+c      here, read in an input file with defined pressure levels
        hPa(12)=700.
        hPa(11)=750.
        hPa(10)=775.
@@ -279,6 +285,9 @@ c      print *, jj_justbelow
       enddo
 c      print *, jj_justbelow
 c      print *, "NUDGE"
+c      print *, "T adjustment, min_Loc = ",min_Loc
+c      print *, "T adjustment, starts = ",t
+c      print *, "T adjustment, ERA = ",t_Pa_to_z
       do jj=min_Loc,max_Loc
          if ( jj.eq.jj_justbelow) then
            nudge_fac=nudge_justbelow_bl
@@ -298,6 +307,7 @@ c      print *, "NUDGE"
             v(jj)=v_Pa_to_z(max_Loc)
             t(jj)=t_Pa_to_z(max_Loc)
        enddo
+c       print *, "T adjustment, ends = ",t
 c      enddo
 c       print *, "t after nudging ", t
 
@@ -345,7 +355,8 @@ c---------Initialization array used in solving matrix
       enddo
       enddo
 
-        tg=theta(nj)
+        !print *, "theta used here ",theta(nj)
+        !tg=theta(nj) commented out as doesn't seem to be used
 
 c---------Calculating Boundary-Layer Height
               ss05=.05*SQRT(uw(1)*uw(1)+vw(1)*vw(1))
@@ -398,6 +409,7 @@ c---------Converting temperature to potential temperature
           theta(j)=t(j)*(p(1)/p(j))**(rgas/cp)
         enddo
           q(1)=0.01                             ! specified constant ground wetness to q(1)
+c          print *, "theta 1 and 2 ",theta(1),theta(2)
 
 c---------Calculating surface fluxes using Monin-Obukhov similarity
 c---------theory. It is applied between the surface and gridpoint zm(nw)
@@ -506,9 +518,10 @@ c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
 c          print *, "INPUTS TO LW",lw,sbc,t(1)
           lw_net = lw - sbc*semis*(t(1)**4)
           sw_net = (1.-albedo1)*sw
-c          gflux = (lw_net+ntsw+mslhf+msshf) 
+          ERAgflux=ntlw+ntsw+mslhf+msshf
+c          print *, "ERA gflux vals",ERAgflux,ntlw,mslhf,msshf 
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
-          print *,"ALBEDO gflux vals ",gflux,lw_net,sw_net,h0,e0,albedo1
+c          print *,"model gflux vals ",gflux,lw_net,h0,e0
 
 c          print *, "FFF",lw_net,sw_net,h0,e0,tsoil(1)
 c          print *, "FLUX DIFFERENCES: gflux",gflux
@@ -589,9 +602,67 @@ c          print *, "ds"
 c          print *, ds
 c          print *, "ni"
 c          print *, ni
-          CALL soiltdm(dedzs,tsoil,zsoil,dzeta,snt,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
-          t(1)=MAX(MIN(tsoil(1),350.),200.)
-c          print *, "t after soiltdm", t
+
+          if (sic.gt.0.) then
+              hs = snt/sic
+          else
+              hs = 0.
+          endif
+          
+c          print *, "before decisions, t(1) and tsoil are ",t(1),tsoil(1)
+
+          if (do_si_coupling.eq.1) then 
+              ! In this situation, we use sea ice input from a model and run the soil model to compute the new surface temperature, which we will feed back to the sea ice model
+              CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
+              t(1)=MAX(MIN(tsoil(1),350.),200.)
+              call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+          elseif (do_si_coupling.eq.-1) then    
+              ! This is for testing only! To run with sea ice initial conditions and no update to sea ice over time
+c              print *, "input to soiltdm ",tsoil
+              CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
+c              print *, "t1 soil setting b4 ",t(1)
+              t(1)=MAX(MIN(tsoil(1),350.),200.)
+c              print *, "t1 soil setting af ",t(1)
+          elseif (do_si_coupling.eq.0) then    
+              ! In this situation, we start from sea ice initial conditions and evolve the sea ice based on thermoIce0
+              ! QUESTION: use Tsurf_tmp = t(1) or Tsurf_tmp = tsoil(1) here??
+              dQiadT = 4.*semis*sbc*(t(1)**3) !!! USE t(1) or tsoil(1) here???
+              Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
+              call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+              call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c              print *, "Tsurf from thermoIce0",Tsurf_tmp
+              t(1)=Tsurf_tmp
+              ! We do not need to regenerate the soil grid, since we are
+              ! not using the soil... so sit and snt should carry
+              ! through to next one from this computation 
+          endif
+          ! In every case, we must limit Tsurf to the freezing point, as
+          ! t(1)=MIN(t(1), -0.055*5. + 273.15) ! these constants are the same as those in thermoIce0
+c          print *, "after decisions, t(1) is ",t(1)
+
+c          if (do_si_coupling.eq.1) then 
+c              ! In this situation, we use sea ice input from a model and run the soil model to compute the new surface temperature, which we will feed back to the sea ice model
+c              CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
+c              t(1)=MAX(MIN(tsoil(1),350.),200.)
+c          elseif (do_si_coupling.eq.-1) then    
+c              ! This is for testing only! To run with sea ice initial conditions and no update to sea ice over time
+c              CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
+c              t(1)=MAX(MIN(tsoil(1),350.),200.)
+c          elseif (do_si_coupling.eq.0) then    
+c              ! In this situation, we start from sea ice initial conditions and evolve the sea ice based on thermoIce0
+c              print *, "ds going into thermoice0",ds
+c              dQiadT = 4.*semis*sbc*(t(1)**3)
+c              call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+cc              call thermoIce0(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c              print *, "Tsurf from thermoIce0",t(1)
+c              ! We do not need to regenerate the soil grid, since we are
+c              ! not using the soil... so sit and snt should carry
+c              ! through to next one from this computation 
+cc          print *, "t after soiltdm", t
+c          endif
+c          print *, "INTEG new sit and snt b4",sit,snt
+c          call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c          print *, "INTEG new sit and snt",sit,snt
         endif
         betag=grav/t(1)
 c        print *, "TSOIL_NOW ",tsoil
@@ -638,7 +709,7 @@ c      print *, "u_on_p ",u_hPa
 c      print *, "zm_at_p ",zm_at_p
 c      print *, "p ",p
 c
+c      print *, "check lw_net b4 is ",lw_net
 
-c
       return
       END

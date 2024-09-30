@@ -51,7 +51,7 @@ PROGRAM ABL
 
   IMPLICIT none
   INTEGER nj,nv,ni,ncat,n_surf_cat
-  PARAMETER(nj=31,nv=6,ni=15) !,n_surf_cat=3) n_surf_cat now set in namelist
+  PARAMETER(nj=31,nv=6) !,ni=15) !,n_surf_cat=3) n_surf_cat now set in namelist, as is ni
 !  PARAMETER(nj=31,nv=6,ni=11)
 
   INTEGER, PARAMETER :: dbl=8
@@ -61,7 +61,7 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Time information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  type(datetime) :: time, next_time, time0, time1
+  type(datetime) :: time, next_time, time0, time1, ERA_time
   type(timedelta) :: dt, merge_dt
 
   ! Variables for the three dimensional model
@@ -107,7 +107,7 @@ PROGRAM ABL
   ! Then surface fields: Mean surface downward long-wave radiation
   ! flux; Mean surface downward short-wave radiation flux, surface
   ! pressure, specific humidity at surface, and temperature at surface
-  TYPE(input_var) :: p0, q0, t0
+  TYPE(input_var) :: p0, q0, t0, d0
   ! REAL :: u850_init_HR, v850_init_HR, t850_init_HR, sdlw_init_HR, sdsw_init_HR
 
   ! u, v and t at the following pressure levels:
@@ -118,7 +118,9 @@ PROGRAM ABL
 !  REAL hPa(nplev)
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0, albedo, semis
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: gflux, lw_net, sw_net, h0, e0
 
+  INTEGER :: repeat_forcing
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -140,16 +142,17 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  type(output_file) :: init_cond, srfv_all, Turb, Met, Met_SI1, Met_SI2, Met_SI3
+  type(output_file) :: init_cond, srfv_all, Turb, Met, Met_SI1, Met_SI2, Met_SI3, srfv_balance, ice_layers
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ds, jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
+  INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
+  INTEGER :: ds
   INTEGER :: merge_ds, merge_cnt
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
   REAL :: ha, tint
@@ -161,6 +164,8 @@ PROGRAM ABL
   INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
   REAL :: init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
 
+  REAL :: q0_val
+
 !  REAL :: height_hPa
  
   ! Read basic namelist
@@ -168,12 +173,14 @@ PROGRAM ABL
   namelist /grid_info/ fname, lon_name, lat_name, mask_name 
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds
-  namelist /seaice_info/ n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+  namelist /seaice_info/ ni, n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+  namelist /forcing_info/ repeat_forcing, use_d2m !, n_p_levels, pressure_levels
 
   read(10, nml=grid_info)
   read(10, nml=time_info)
   read(10, nml=merge_info)
   read(10, nml=seaice_info)
+  read(10, nml=forcing_info)
 
   close(10)
 
@@ -217,6 +224,8 @@ PROGRAM ABL
     stop "There must be an integer number of time steps in the hour."
   endif
   time = time0
+  ERA_time = time0
+  print *, "start and end:",s_year,"-",e_month,"-",s_day," to ",e_year,"-",e_month,"-",e_day
 
   ! merge_seconds=read_merge_timestep("./merge_timestep.cfg")
   ! print *, "merge_seconds ",merge_seconds
@@ -259,13 +268,20 @@ PROGRAM ABL
   ALLOCATE(dedzs(mgr,ngr,ni,ncat))
   ALLOCATE(tsoil,zsoil,mold=dedzs)
 
+  ALLOCATE(gflux(mgr,ngr,ncat))
+  ALLOCATE(lw_net,sw_net,h0,e0,mold=gflux)
+
   ! Initialise input files and read initial field
   ! example code for p0
   ! TODO: Read directory name (here "data") from namelist
   ! Initial conditions
   call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
   call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  if (use_d2m.eq.1) then
+      call d0%init("d2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  else
+      call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  endif
 
 !  hPa(1)=700.
 !  hPa(2)=750.
@@ -392,20 +408,36 @@ PROGRAM ABL
   call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  print *, "____ READ IN SST??? ________"
+
+  print *, "initialised some"
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  call sic_now%read_input(time, "Moorings")
-  call sit_now%read_input(time, "Moorings")
-  call snt_now%read_input(time, "Moorings")
+  call sic_now%read_input(time0, "Moorings")
+  print *, "read_input some a1"
+  call sit_now%read_input(time0, "Moorings")
+  print *, "read_input some a2"
+  call snt_now%read_input(time0, "Moorings")
+  print *, "read_input some a3"
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
+  print *, "read_input some b"
   call t0%read_input(time0, "ERA")
-  call q0%read_input(time0, "ERA")
+  print *, "read_input some c"
+  if (use_d2m.eq.1) then
+      call d0%read_input(time0, "ERA")
+  else
+      call q0%read_input(time0, "ERA")
+  endif
+  print *, "read_input some d"
   call u850_now%read_input(time0, "ERA")
+  print *, "read_input some e"
   call v850_now%read_input(time0, "ERA")
+
+  print *, "read_input some f"
 
   do m = 1, mgr
     do n = 1, ngr
@@ -413,16 +445,16 @@ PROGRAM ABL
       ! Skip the land points
       if ( mask(m,n) .eq. 0 ) continue
 
-      print *, "initializing: about to call"
-      print *, "albedo ",albedo(m,n,:)
-      print *, "u850 from file ",u850_now%get_point(m,n)
-      print *, "v850 from file ",v850_now%get_point(m,n)
-      print *, "slon ",slon
-      print *, "semis ",semis(m,n,:)
-      print *, "rlat ",rlat(m,n)
-      print *, "z0 ",z0(m,n,:)
-      print *, "taur ",taur(m,n)
-      print *, "p0 ",p0%get_point(m,n)
+!      print *, "initializing: about to call"
+!      print *, "albedo ",albedo(m,n,:)
+!      print *, "u850 from file ",u850_now%get_point(m,n)
+!      print *, "v850 from file ",v850_now%get_point(m,n)
+!      print *, "slon ",slon
+!      print *, "semis ",semis(m,n,:)
+!      print *, "rlat ",rlat(m,n)
+!      print *, "z0 ",z0(m,n,:)
+!      print *, "taur ",taur(m,n)
+!      print *, "p0 ",p0%get_point(m,n)
 
 !      u_in = u850_now%get_point(m,n)
 !      v_in = v850_now%get_point(m,n)
@@ -471,7 +503,7 @@ PROGRAM ABL
 !       endif
 !      enddo
 
-      print *, "about to INITIALIZE!!!"
+!      print *, "about to INITIALIZE!!!"
 
 
       print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
@@ -490,7 +522,7 @@ PROGRAM ABL
         semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
       endif
 
-      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
+!      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
 
       !!! Hack for now
       do n_si = 1,ncat
@@ -498,27 +530,16 @@ PROGRAM ABL
       enddo
       ! Choose some initial sea ice conditions
       sic(m,n,1) = init_sic !0.50 ! 0.90
-      if (init_sic.gt.0) then
-        sit(m,n,1) = init_sit/sic(m,n,1)
-        snt(m,n,1) = init_snt/sic(m,n,1)
-      else
-        sit(m,n,1) = 0.
-        snt(m,n,1) = 0.
-      endif
+      sit(m,n,1) = init_sit
+      snt(m,n,1) = init_snt
       if (ncat.gt.1) then 
           sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
           sit(m,n,ncat) = 0.
           snt(m,n,ncat) = 0.
           if (ncat.gt.2) then
-              if (init_sic_young.gt.0) then
-                  sic(m,n,2) = init_sic_young  
-                  sit(m,n,2) = init_sit_young/sic(m,n,2)
-                  snt(m,n,2) = init_snt_young/sic(m,n,2)
-              else
-                  sic(m,n,2) = 0.
-                  sit(m,n,2) = 0.
-                  snt(m,n,2) = 0.
-              endif
+              sic(m,n,2) = init_sic_young  
+              sit(m,n,2) = init_sit_young
+              snt(m,n,2) = init_snt_young
           endif
       endif
       !  if (n_si.lt.ncat) then
@@ -541,88 +562,126 @@ PROGRAM ABL
 !!    Settings for "soil" code
       ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
      
-      print *, "NEED TO FIX"
-      ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))
-      ice_snow_thick(m,n,2) = 0.
-      print *, "ice_snow_thick",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2)
-      print *, "sit ",sit(m,n,1)
-      print *, "sit ",sit(m,n,2)
-      print *, "sit ",sit(m,n,3)
-      print *, "snt ",snt(m,n,1)
-      print *, "snt ",snt(m,n,2)
-      print *, "snt ",snt(m,n,3)
-      print *, "sic ",sic(m,n,1)
-      print *, "sic ",sic(m,n,2)
-      print *, "sic ",sic(m,n,3)
-      print *, "CAUTION!!! MUST BE AWARE OF MODELS USING TRUE THICKNESS OR EFFECTIVE THICKNESS..."
+!      print *, "Check this ice_snow_thick"
+      if (sic(m,n,1).gt.0) then
+          ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))/sic(m,n,1)
+      else
+          ice_snow_thick(m,n,1) = 0.
+      endif
+      if (ncat.gt.3) then
+          print *, "PROBLEM! 3 is the maximum number of categories allowed"
+      elseif (ncat.gt.2) then ! ncat=1: just one thickness. ncat=2: only one SI category     
+          if (sic(m,n,2).gt.0) then
+              ice_snow_thick(m,n,2) = (sit(m,n,2) + snt(m,n,2))/sic(m,n,2)
+          else
+              ice_snow_thick(m,n,2) = 0.
+          endif
+      endif
 
       ! Do some initialising
       dedzs(m,n,:,:) = 0.
-      tsoil(m,n,:,:) = 0.
+      tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
       zsoil(m,n,:,:) = 0.
 
-!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
-      call Initialize_NeXtSIM_ABL( &
-        albedo(m,n,1),                                                    & ! Internal or from coupler?
-!        u_in, v_in,                                                     &
-        u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
-!        u(m,n,:), v(m,n,:),               & ! From file
-        slon,                                                           & ! See above
-        semis(m,n,1),                                                     & ! Internal or from coupler?
-        rlat(m,n),                                                      &
-        z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
-        ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
-!        z0(m,n),                                                        & ! Internal or from coupler?
-        taur(m,n),                                                      & ! Internal variable
-!        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
-        p0%get_point(m,n), q0%get_point(m,n), & ! From file
-        t0%get_point(m,n),        & ! From file
-        nj,                                                             & ! Number of vertical grid points
-        nv,                                                             & ! Always 6?
-        dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
-        u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),              & ! prognostics
-        e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),           & ! prognostics
-        wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
-        p(m,n,:), tld(m,n,:), ni,                                       &    ! prognostics
-        dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick(m,n,1) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
-      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
-      print *, "ustar from initialize: ",ustar(m,n)
-      print *, "soil values: "
-      print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
+!!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
+!      call Initialize_NeXtSIM_ABL( &
+!        albedo(m,n,1),                                                    & ! Internal or from coupler?
+!!        u_in, v_in,                                                     &
+!        u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
+!!        u(m,n,:), v(m,n,:),               & ! From file
+!        slon,                                                           & ! See above
+!        semis(m,n,1),                                                     & ! Internal or from coupler?
+!        rlat(m,n),                                                      &
+!        z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
+!        ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
+!!        z0(m,n),                                                        & ! Internal or from coupler?
+!        taur(m,n),                                                      & ! Internal variable
+!!        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
+!        p0%get_point(m,n), q0%get_point(m,n), & ! From file
+!        t0%get_point(m,n),        & ! From file
+!        nj,                                                             & ! Number of vertical grid points
+!        nv,                                                             & ! Always 6?
+!        dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
+!        u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),              & ! prognostics
+!        e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),           & ! prognostics
+!        wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
+!        p(m,n,:), tld(m,n,:), ni,                                       &    ! prognostics
+!        dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick(m,n,1) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
+!      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
+!      print *, "ustar from initialize: ",ustar(m,n)
+!      print *, "soil values: "
+!      print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
 
-      ! Now initialise for later
       do n_si = 1,ncat
-        u_each_cat(m,n,:,n_si) = u(m,n,:)
-        v_each_cat(m,n,:,n_si) = v(m,n,:)
-        t_each_cat(m,n,:,n_si) = t(m,n,:)
-        q_each_cat(m,n,:,n_si) = q(m,n,:)
-        qi_each_cat(m,n,:,n_si) = qi(m,n,:)
-        e_each_cat(m,n,:,n_si) = e(m,n,:)
-        ep_each_cat(m,n,:,n_si) = ep(m,n,:)
-        uw_each_cat(m,n,:,n_si) = uw(m,n,:)
-        vw_each_cat(m,n,:,n_si) = vw(m,n,:)
-        wt_each_cat(m,n,:,n_si) = wt(m,n,:)
-        wq_each_cat(m,n,:,n_si) = wq(m,n,:)
-        wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)
-        km_each_cat(m,n,:,n_si) = km(m,n,:)
-        kh_each_cat(m,n,:,n_si) = kh(m,n,:)
-        ustar_each_cat(m,n,n_si) = ustar(m,n)
-        p_each_cat(m,n,:,n_si) = p(m,n,:)
-        tld_each_cat(m,n,:,n_si) = tld(m,n,:)
-        blht_each_cat(m,n,n_si) = blht(m,n)
-        rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)
+    !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
+          if (use_d2m.eq.1) then
+              call SpecHum_from_d2m(d0%get_point(m,n), p0%get_point(m,n), q0_val)
+          else
+              q0_val = q0%get_point(m,n)
+          endif
+          call Initialize_NeXtSIM_ABL( &
+            albedo(m,n,n_si),                                                    & ! Internal or from coupler?
+            u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
+            slon,                                                           & ! See above
+            semis(m,n,1),                                                     & ! Internal or from coupler?
+            rlat(m,n),                                                      &
+            z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
+            ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
+            taur(m,n),                                                      & ! Internal variable
+            p0%get_point(m,n), q0_val,                    & ! From file
+            263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
+!            p0%get_point(m,n), q0_val, t0%get_point(m,n),                   & ! From file
+            nj,                                                             & ! Number of vertical grid points
+            nv,                                                             & ! Always 6?
+            dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
+            u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si),      & ! prognostics
+            q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),                             & ! prognostics
+            e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si),    & 
+            vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),                            & ! prognostics
+            wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si),  &
+            kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),                           & ! prognostics
+            p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
+            dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
+            dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
+!          print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
+!          print *, "ustar from initialize: ",ustar(m,n)
+!          print *, "soil values: "
+!          print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
+!          print *, "INITIAL TEMPERATURE PROFILE IS ",t_each_cat(m,n,:,n_si),theta(m,n,nj)
+
+
+!      ! Now initialise for later
+!        u_each_cat(m,n,:,n_si) = u(m,n,:)
+!        v_each_cat(m,n,:,n_si) = v(m,n,:)
+!        t_each_cat(m,n,:,n_si) = t(m,n,:)
+!        q_each_cat(m,n,:,n_si) = q(m,n,:)
+!        qi_each_cat(m,n,:,n_si) = qi(m,n,:)
+!        e_each_cat(m,n,:,n_si) = e(m,n,:)
+!        ep_each_cat(m,n,:,n_si) = ep(m,n,:)
+!        uw_each_cat(m,n,:,n_si) = uw(m,n,:)
+!        vw_each_cat(m,n,:,n_si) = vw(m,n,:)
+!        wt_each_cat(m,n,:,n_si) = wt(m,n,:)
+!        wq_each_cat(m,n,:,n_si) = wq(m,n,:)
+!        wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)
+!        km_each_cat(m,n,:,n_si) = km(m,n,:)
+!        kh_each_cat(m,n,:,n_si) = kh(m,n,:)
+!        ustar_each_cat(m,n,n_si) = ustar(m,n)
+!        p_each_cat(m,n,:,n_si) = p(m,n,:)
+!        tld_each_cat(m,n,:,n_si) = tld(m,n,:)
+!        blht_each_cat(m,n,n_si) = blht(m,n)
+!        rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)
       enddo
  
-      print *, "T",t(m,n,:)
+!      print *, "T",t(m,n,:)
 
-!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
-      !!! HACK FOR NOW
-      do n_si=1,ncat
-        dedzs(m,n,:,n_si) = dedzs(m,n,:,1)
-        tsoil(m,n,:,n_si) = tsoil(m,n,:,1)
-        zsoil(m,n,:,n_si) = zsoil(m,n,:,1)
-        dzeta(m,n,n_si) = dzeta(m,n,1)
-      enddo
+!!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
+!      !!! HACK FOR NOW
+!      do n_si=1,ncat
+!        dedzs(m,n,:,n_si) = dedzs(m,n,:,1)
+!        tsoil(m,n,:,n_si) = tsoil(m,n,:,1)
+!        zsoil(m,n,:,n_si) = zsoil(m,n,:,1)
+!        dzeta(m,n,n_si) = dzeta(m,n,1)
+!      enddo
       blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
 
     enddo
@@ -650,10 +709,10 @@ PROGRAM ABL
   call srfv_all%add_var("T0")
   call srfv_all%add_var("blht")
   call srfv_all%add_var("rif_blht")
-  print *, "Initialised srfv "
+!  print *, "Initialised srfv "
 
   call Turb%init('Turb.nc', mgr, ngr, mask, rlon, rlat, zt=zt)
-  print *, "adding variables to Turb"
+!  print *, "adding variables to Turb"
   call Turb%add_var("dummy", "zt")
   call Turb%add_var("e", "zt")
   call Turb%add_var("uw", "zt")
@@ -666,10 +725,10 @@ PROGRAM ABL
   call Turb%add_var("wqi", "zt")
 ! call Turb%add_var("rnet", "zt")
   call Turb%add_var("wt", "zt")
-  print *, "Initialised Turb "
+!  print *, "Initialised Turb "
 
-  print *, "we are initialilsing zm in Met.nc as "
-  print *, zm
+!  print *, "we are initialilsing zm in Met.nc as "
+!  print *, zm
   call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
   call Met%add_var("dummy", "zm")
   call Met%add_var("u", "zm")
@@ -678,7 +737,7 @@ PROGRAM ABL
   call Met%add_var("p", "zm")
   call Met%add_var("q", "zm")
   call Met%add_var("qi", "zm")
-  print *, "Initialised Met"
+!  print *, "Initialised Met"
 
   ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
   call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
@@ -712,15 +771,53 @@ PROGRAM ABL
       endif
   endif
 
+  call srfv_balance%init('SRFV-BALANCE.nc', mgr, ngr, mask, rlon, rlat)
+  call srfv_balance%add_var("dummy")
+  call srfv_balance%add_var("gflux1")
+  call srfv_balance%add_var("lw_net1")
+  call srfv_balance%add_var("sw_net1")
+  call srfv_balance%add_var("h01")
+  call srfv_balance%add_var("e01")
+  call srfv_balance%add_var("gflux2")
+  call srfv_balance%add_var("lw_net2")
+  call srfv_balance%add_var("sw_net2")
+  call srfv_balance%add_var("h02")
+  call srfv_balance%add_var("e02")
+  call srfv_balance%add_var("gflux3")
+  call srfv_balance%add_var("lw_net3")
+  call srfv_balance%add_var("sw_net3")
+  call srfv_balance%add_var("h03")
+  call srfv_balance%add_var("e03")
+!  print *, "Initialised srfv balance "
+
+  call ice_layers%init('ice_layers.nc', mgr, ngr, mask, rlon, rlat, nz=ni)
+  call ice_layers%add_var("dummy","nz")
+  call ice_layers%add_var("tsoil1","nz")
+!  print *, "here 1"
+  call ice_layers%add_var("zsoil1","nz")
+!  print *, "here 2"
+  call ice_layers%add_var("tsoil2","nz")
+  call ice_layers%add_var("zsoil2","nz")
+  call ice_layers%add_var("tsoil3","nz")
+  call ice_layers%add_var("zsoil3","nz")
+  call ice_layers%add_var("ice_snow_thick1")
+  call ice_layers%add_var("ice_snow_thick2")
+  call ice_layers%add_var("ice_snow_thick3")
+  ! call ice_layers%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
+  !print *, "here 3"
+  !call ice_layers%append_var("zsoil1", zsoil(:,:,:,1))
+
+
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  print *, "Initialised"
-  print *, "now zm is ",zm
+!  print *, "Initialised"
+!  print *, "now zm is ",zm
   ! Output initial conditions
-  call init_cond%init('INIT_COND.nc', mgr, ngr, mask, rlon, rlat, zm=zm, zt=zt)
+  call init_cond%init('INIT_COND.nc', mgr, ngr, mask, rlon, rlat, zm=zm, zt=zt,nz=ni)
 
   call init_cond%add_var("U", "zm")
   call init_cond%add_var("V", "zm")
   call init_cond%add_var("Theta", "zm")
+  call init_cond%add_var("T", "zm")
   call init_cond%add_var("P", "zm")
   call init_cond%add_var("Q", "zm")
   call init_cond%add_var("QI", "zm")
@@ -736,27 +833,32 @@ PROGRAM ABL
   call init_cond%add_var("kh", "zt")
   call init_cond%add_var("tld", "zt")
 
-  call init_cond%add_var("tsoil", "zgnd")
+  call init_cond%add_var("tsoil1","nz")
+  call init_cond%add_var("zsoil1","nz")
 
   call init_cond%append_time(time0)
 
-  call init_cond%append_var("U", u)
-  call init_cond%append_var("V", v)
+  ! Here we'r appending the first profile of each category
+  call init_cond%append_var("U", u_each_cat(:,:,:,1))
+  call init_cond%append_var("V", v_each_cat(:,:,:,1))
   call init_cond%append_var("Theta", theta)
-  call init_cond%append_var("P", p)
-  call init_cond%append_var("Q", q)
-  call init_cond%append_var("QI", qi)
+  call init_cond%append_var("T", t_each_cat(:,:,:,1))
+  call init_cond%append_var("P", p_each_cat(:,:,:,1))
+  call init_cond%append_var("Q", q_each_cat(:,:,:,1))
+  call init_cond%append_var("QI", qi_each_cat(:,:,:,1))
 
-  call init_cond%append_var("E", e)
-  call init_cond%append_var("uw", uw)
-  call init_cond%append_var("vw", vw)
-  call init_cond%append_var("ep", ep)
-  call init_cond%append_var("wt", wt)
-  call init_cond%append_var("wq", wq)
-  call init_cond%append_var("wqi", wqi)
-  call init_cond%append_var("km", km)
-  call init_cond%append_var("kh", kh)
-  call init_cond%append_var("tld", tld)
+  call init_cond%append_var("E", e_each_cat(:,:,:,1))
+  call init_cond%append_var("uw", uw_each_cat(:,:,:,1))
+  call init_cond%append_var("vw", vw_each_cat(:,:,:,1))
+  call init_cond%append_var("ep", ep_each_cat(:,:,:,1))
+  call init_cond%append_var("wt", wt_each_cat(:,:,:,1))
+  call init_cond%append_var("wq", wq_each_cat(:,:,:,1))
+  call init_cond%append_var("wqi", wqi_each_cat(:,:,:,1))
+  call init_cond%append_var("km", km_each_cat(:,:,:,1))
+  call init_cond%append_var("kh", kh_each_cat(:,:,:,1))
+  call init_cond%append_var("tld", tld_each_cat(:,:,:,1))
+  call init_cond%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
+  call init_cond%append_var("zsoil1", zsoil(:,:,:,1))
 
 !  print *, "we are initialilsing zm in Met.nc as "
 !  print *, zm
@@ -797,29 +899,50 @@ PROGRAM ABL
 !      Tsurf(m,n) = -2. + 273.15
 !    enddo
 !  enddo
-  next_time = time + timedelta(hours=1)
+  if (repeat_forcing.eq.-1) then
+      ! ERA_time remains as t0
+      next_time = ERA_time ! ERA_time is set
+  else
+      ! This is also relevant for the daily repeat
+      ERA_time = time    
+      next_time = time + timedelta(hours=1)
+  endif
   call sic_next%read_input(next_time, "Moorings")
   call sit_next%read_input(next_time, "Moorings")
   call snt_next%read_input(next_time, "Moorings")
 
-  print *, "ALBEDO, SEMIS, start loop 1a ",albedo
-  print *, "ALBEDO, SEMIS, start loop 1b ",semis
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
 
       ! Load ERA5 data every hour
-      next_time = time + timedelta(hours=1)
-      call t850_now%read_input(time, "ERA")
-      call u850_now%read_input(time, "ERA")
-      call v850_now%read_input(time, "ERA")
-      call sdlw_now%read_input(time, "ERA")
-      call sdsw_now%read_input(time, "ERA")
-      call ntlw_now%read_input(time, "ERA")
-      call ntsw_now%read_input(time, "ERA")
-      call mslhf_now%read_input(time, "ERA")
-      call msshf_now%read_input(time, "ERA")
+      if (repeat_forcing.eq.-1) then
+          ! ERA_time remains as t0
+          next_time = ERA_time ! ERA_time is set
+      elseif (repeat_forcing.eq.1) then
+          ! In this situation, we want to increment hour but not day
+          ERA_time = time0 + timedelta(hours=time%getHour())
+          if (time%getHour().eq.23) then
+              next_time = time0
+          else
+              next_time = ERA_time + timedelta(hours=1)
+          endif
+          ! print *, "daily repeated forcing: from ",ERA_time%getYear(),ERA_time%getMonth(),ERA_time%getDay(),ERA_time%getHour(),ERA_time%getMinute(),ERA_time%getSecond()
+          !print *, "daily repeated forcing: to ",next_time%getYear(),next_time%getMonth(),next_time%getDay(),next_time%getHour(),next_time%getMinute(),next_time%getSecond()
+      else
+          ERA_time = time    
+          next_time = time + timedelta(hours=1)
+      endif
+      call t850_now%read_input(ERA_time, "ERA")
+      call u850_now%read_input(ERA_time, "ERA")
+      call v850_now%read_input(ERA_time, "ERA")
+      call sdlw_now%read_input(ERA_time, "ERA")
+      call sdsw_now%read_input(ERA_time, "ERA")
+      call ntlw_now%read_input(ERA_time, "ERA")
+      call ntsw_now%read_input(ERA_time, "ERA")
+      call mslhf_now%read_input(ERA_time, "ERA")
+      call msshf_now%read_input(ERA_time, "ERA")
 !      call sic_now%read_input(time, "Moorings")
 !      call sit_now%read_input(time, "Moorings")
 !      call snt_now%read_input(time, "Moorings")
@@ -837,79 +960,79 @@ PROGRAM ABL
 !      call sit_next%read_input(next_time, "Moorings")
 !      call snt_next%read_input(next_time, "Moorings")
 
-      call t700_now%read_input(time, "ERA")
-      call u700_now%read_input(time, "ERA")
-      call v700_now%read_input(time, "ERA")
+      call t700_now%read_input(ERA_time, "ERA")
+      call u700_now%read_input(ERA_time, "ERA")
+      call v700_now%read_input(ERA_time, "ERA")
       call t700_next%read_input(next_time, "ERA")
       call u700_next%read_input(next_time, "ERA")
       call v700_next%read_input(next_time, "ERA")
 
-      call t750_now%read_input(time, "ERA")
-      call u750_now%read_input(time, "ERA")
-      call v750_now%read_input(time, "ERA")
+      call t750_now%read_input(ERA_time, "ERA")
+      call u750_now%read_input(ERA_time, "ERA")
+      call v750_now%read_input(ERA_time, "ERA")
       call t750_next%read_input(next_time, "ERA")
       call u750_next%read_input(next_time, "ERA")
       call v750_next%read_input(next_time, "ERA")
 
-      call t775_now%read_input(time, "ERA")
-      call u775_now%read_input(time, "ERA")
-      call v775_now%read_input(time, "ERA")
+      call t775_now%read_input(ERA_time, "ERA")
+      call u775_now%read_input(ERA_time, "ERA")
+      call v775_now%read_input(ERA_time, "ERA")
       call t775_next%read_input(next_time, "ERA")
       call u775_next%read_input(next_time, "ERA")
       call v775_next%read_input(next_time, "ERA")
 
-      call t800_now%read_input(time, "ERA")
-      call u800_now%read_input(time, "ERA")
-      call v800_now%read_input(time, "ERA")
+      call t800_now%read_input(ERA_time, "ERA")
+      call u800_now%read_input(ERA_time, "ERA")
+      call v800_now%read_input(ERA_time, "ERA")
       call t800_next%read_input(next_time, "ERA")
       call u800_next%read_input(next_time, "ERA")
       call v800_next%read_input(next_time, "ERA")
 
-      call t825_now%read_input(time, "ERA")
-      call u825_now%read_input(time, "ERA")
-      call v825_now%read_input(time, "ERA")
+      call t825_now%read_input(ERA_time, "ERA")
+      call u825_now%read_input(ERA_time, "ERA")
+      call v825_now%read_input(ERA_time, "ERA")
       call t825_next%read_input(next_time, "ERA")
       call u825_next%read_input(next_time, "ERA")
       call v825_next%read_input(next_time, "ERA")
 
-      call t875_now%read_input(time, "ERA")
-      call u875_now%read_input(time, "ERA")
-      call v875_now%read_input(time, "ERA")
+      call t875_now%read_input(ERA_time, "ERA")
+      call u875_now%read_input(ERA_time, "ERA")
+      call v875_now%read_input(ERA_time, "ERA")
       call t875_next%read_input(next_time, "ERA")
       call u875_next%read_input(next_time, "ERA")
       call v875_next%read_input(next_time, "ERA")
 
-      call t900_now%read_input(time, "ERA")
-      call u900_now%read_input(time, "ERA")
-      call v900_now%read_input(time, "ERA")
+      call t900_now%read_input(ERA_time, "ERA")
+      call u900_now%read_input(ERA_time, "ERA")
+      call v900_now%read_input(ERA_time, "ERA")
       call t900_next%read_input(next_time, "ERA")
       call u900_next%read_input(next_time, "ERA")
       call v900_next%read_input(next_time, "ERA")
 
-      call t925_now%read_input(time, "ERA")
-      call u925_now%read_input(time, "ERA")
-      call v925_now%read_input(time, "ERA")
+      call t925_now%read_input(ERA_time, "ERA")
+      call u925_now%read_input(ERA_time, "ERA")
+      call v925_now%read_input(ERA_time, "ERA")
       call t925_next%read_input(next_time, "ERA")
       call u925_next%read_input(next_time, "ERA")
       call v925_next%read_input(next_time, "ERA")
 
-      call t950_now%read_input(time, "ERA")
-      call u950_now%read_input(time, "ERA")
-      call v950_now%read_input(time, "ERA")
+      call t950_now%read_input(ERA_time, "ERA")
+      call u950_now%read_input(ERA_time, "ERA")
+      call v950_now%read_input(ERA_time, "ERA")
       call t950_next%read_input(next_time, "ERA")
       call u950_next%read_input(next_time, "ERA")
       call v950_next%read_input(next_time, "ERA")
 
-      call t975_now%read_input(time, "ERA")
-      call u975_now%read_input(time, "ERA")
-      call v975_now%read_input(time, "ERA")
+      call t975_now%read_input(ERA_time, "ERA")
+      call u975_now%read_input(ERA_time, "ERA")
+      call v975_now%read_input(ERA_time, "ERA")
       call t975_next%read_input(next_time, "ERA")
       call u975_next%read_input(next_time, "ERA")
       call v975_next%read_input(next_time, "ERA")
 
-      call t1000_now%read_input(time, "ERA")
-      call u1000_now%read_input(time, "ERA")
-      call v1000_now%read_input(time, "ERA")
+      call t1000_now%read_input(ERA_time, "ERA")
+      call u1000_now%read_input(ERA_time, "ERA")
+      call v1000_now%read_input(ERA_time, "ERA")
       call t1000_next%read_input(next_time, "ERA")
       call u1000_next%read_input(next_time, "ERA")
       call v1000_next%read_input(next_time, "ERA")
@@ -917,9 +1040,7 @@ PROGRAM ABL
 !      print *, "going into INTEGATE with this u",u(m,n,:)
 !      print *, "u1 ",u(m,n,1)
 
-      print *, "starting loop"
-      print *, "ALBEDO, SEMIS, start loop 2a ",albedo
-      print *, "ALBEDO, SEMIS, start loop 2b ",semis
+!      print *, "starting loop"
       do jm = 1, nmts
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
         print *, "doing the Integration as jh, jm = ",jh,jm
@@ -927,7 +1048,7 @@ PROGRAM ABL
         if (merge_cnt.eq.merge_ds) then
           do_merge_columns = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
           merge_cnt = 0.
-          print *, "PROCEEDING WITH MERGING"
+!          print *, "PROCEEDING WITH MERGING"
         else
           do_merge_columns = 0
         endif
@@ -947,6 +1068,14 @@ PROGRAM ABL
             mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
             msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
 
+!            if (m.eq.1) then
+!                if (n.eq.1) then
+!                    print *, "WHY time ",jd,jh,jm,",tint",tint
+!                    print *, "WHY sdlw ",sdlw,"sdsw",sdsw
+!                    print *,"WHY sdlw2 ",sdlw_now%get_point(m,n),sdlw_next%get_point(m,n)
+!                endif
+!            endif
+
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
 !           ANSWER: ultimately, these will be at the coupling timestep. Quicker
@@ -961,12 +1090,12 @@ PROGRAM ABL
 !            sic = hourint(tint, sic_now%get_point(m,n), sic_next%get_point(m,n))
 !            sit = hourint(tint, sit_now%get_point(m,n), sit_next%get_point(m,n))
 
-            !!!!!! INITIALISE SEA ICE GRID !!!!!
-            !! Note: this may need to move based on where we do the nextsim coupling
-            ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
-            do n_si = 1,ncat
-              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
-            enddo
+!            !!!!!! INITIALISE SEA ICE GRID !!!!!
+!            !! Note: this may need to move based on where we do the nextsim coupling
+!            ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
+!            do n_si = 1,ncat
+!              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+!            enddo
 
             !print *, "get hPa levels"
             t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
@@ -1070,10 +1199,23 @@ PROGRAM ABL
 
             do n_si = 1, ncat
 
-                print *, "HCRTil loop for integrate ",n_si
+                !!!!!! INITIALISE SEA ICE GRID !!!!!
+                !! Note: this may need to move based on where we do the nextsim coupling
+                ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
+                ! call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+!                print *, "HCRTil loop for integrate ",n_si
+                if (sic(m,n,n_si).gt.0) then
+                    ice_snow_thick(m,n,n_si) = (sit(m,n,n_si) + snt(m,n,n_si))/sic(m,n,n_si) 
+                    print *, "NEED TO FIX FOR THE EXAMPLE OF A DISAPPEARING CATEGORY!"
+                else
+                    ice_snow_thick(m,n,n_si) = 0.
+                endif
+!                print *, "NEWLOOP new sit and snt ",sit(m,n,n_si),snt(m,n,n_si),ice_snow_thick(m,n,n_si),", nsi ",n_si
+!                print *, "ice_snow_thick for dzeta and n_si = ",n_si," is ",ice_snow_thick(m,n,n_si)
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
-                print *, "HCRTil compute_dzeta ",ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si),ni
-                print *, "ALBEDO, SEMIS, start loop 3 ",albedo(m,n,n_si),semis(m,n,n_si)
+                call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+!                print *, "HCRTil compute_dzeta ",ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si),ni
+!                print *, "ALBEDO, SEMIS, start loop 3 ",albedo(m,n,n_si),semis(m,n,n_si)
 
                 !print *, "about to integrate -----------", n_si
                 !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
@@ -1097,8 +1239,11 @@ PROGRAM ABL
                 !print *, tld_each_cat(m,n,:,n_si) 
                 !print *,  blht_each_cat(m,n,n_si)
                 !print *, rif_blht_each_cat(m,n,n_si)
-                print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
-                print *, "SEMIS is ", semis(m,n,n_si), " for n_si = ",n_si
+!                print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
+!                print *, "SEMIS is ", semis(m,n,n_si), " for n_si = ",n_si
+!                print *, "Tsurf from, n_si = ",n_si
+!                print *, "gflux vals will be for n_si = ",n_si,", Tsurf is ",t_each_cat(m,n,1,n_si)
+!                print *, "THETA INT BEFORE ",theta(m,n,1),theta(m,n,2),theta(m,n,nj)
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
@@ -1130,9 +1275,13 @@ PROGRAM ABL
                   !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
                   !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
                   ni,                                                       &
-                  dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si))             ! for "soil" temperatures
+                  dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
+                  do_si_coupling, & 
+                  gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
                 !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
+                !print *, "check lw_net af is ",lw_net(m,n,n_si)
             enddo
+            print *, "gflux to be output ",gflux
 
             !! After each loop, make sure we update the main arrays with a
             !merged column. BUT only use this merged array to force the next
@@ -1160,7 +1309,7 @@ PROGRAM ABL
 
             area_conc_ow = 1.
             do n_si = 1, ncat
-              print *, "HCRTil n_si = ",n_si
+!              print *, "HCRTil n_si = ",n_si
               if (do_tiling.eq.0) then
                 area_conc = 1.
               elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
@@ -1200,9 +1349,9 @@ PROGRAM ABL
             u(m,n,:) = u_sum_cat
             v(m,n,:) = v_sum_cat
             t(m,n,:) = t_sum_cat
-            print *, "updates: ",t_each_cat(m,n,1,:),t_sum_cat(1),t(m,n,1)
-            print *, "updates: ",t_each_cat(m,n,2,:),t_sum_cat(2),t(m,n,2)
-            print *, "updates: ",t_each_cat(m,n,3,:),t_sum_cat(3),t(m,n,3)
+!            print *, "updates: ",t_each_cat(m,n,1,:),t_sum_cat(1),t(m,n,1)
+!            print *, "updates: ",t_each_cat(m,n,2,:),t_sum_cat(2),t(m,n,2)
+!            print *, "updates: ",t_each_cat(m,n,3,:),t_sum_cat(3),t(m,n,3)
             !print *, "t_test ",m,n," t at end ",t(m,n,:)
             q(m,n,:) = q_sum_cat 
             qi(m,n,:) = qi_sum_cat 
@@ -1250,14 +1399,17 @@ PROGRAM ABL
         enddo
 
         time = time + dt;
+        ERA_time = ERA_time  ! + dt;
         merge_cnt = merge_cnt + ds
         print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,1)
+!        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,1)
+
+!        print *, "shapes ",ustar(1,1),gflux(1,1,1) 
 
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
         mnt_out_ds = mnt_out*60./ds
-        print *, "mnt_out_ds",mnt_out_ds
+!        print *, "mnt_out_ds",mnt_out_ds
         IF(MOD(jm,mnt_out_ds).eq.0) then 
           ! mnt_out to number timesteps HCR
           call srfv_all%append_time(time)
@@ -1273,6 +1425,23 @@ PROGRAM ABL
           call srfv_all%append_var("blht", blht)
           call srfv_all%append_var("rif_blht", rif_blht)
 
+          call srfv_balance%append_time(time)
+          call srfv_balance%append_var("gflux1",gflux(:,:,1))
+          call srfv_balance%append_var("lw_net1",lw_net(:,:,1))
+          call srfv_balance%append_var("sw_net1",sw_net(:,:,1))
+          call srfv_balance%append_var("h01",h0(:,:,1))
+          call srfv_balance%append_var("e01",e0(:,:,1))
+          call srfv_balance%append_var("gflux2",gflux(:,:,2))
+          call srfv_balance%append_var("lw_net2",lw_net(:,:,2))
+          call srfv_balance%append_var("sw_net2",sw_net(:,:,2))
+          call srfv_balance%append_var("h02",h0(:,:,2))
+          call srfv_balance%append_var("e02",e0(:,:,2))
+          call srfv_balance%append_var("gflux3",gflux(:,:,3))
+          call srfv_balance%append_var("lw_net3",lw_net(:,:,3))
+          call srfv_balance%append_var("sw_net3",sw_net(:,:,3))
+          call srfv_balance%append_var("h03",h0(:,:,3))
+          call srfv_balance%append_var("e03",e0(:,:,3))
+
           ! Heather moved to here so we have more frequent output
 !          print *, "APPENDIGN THIS U ",u
           call Met%append_time(time)
@@ -1283,8 +1452,8 @@ PROGRAM ABL
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
  
-          print *, "outputting what t? ", t(1,1,1),t_each_cat(1,1,1,:)
-          print *, "outputting what t? ", t(1,1,2),t_each_cat(1,1,2,:)
+!          print *, "outputting what t? ", t(1,1,1),t_each_cat(1,1,1,:)
+!          print *, "outputting what t? ", t(1,1,2),t_each_cat(1,1,2,:)
 
           call Met_SI1%append_time(time)
           call Met_SI1%append_var("u", u_each_cat(:,:,:,1))
@@ -1294,6 +1463,13 @@ PROGRAM ABL
           call Met_SI1%append_var("q", q_each_cat(:,:,:,1))
           call Met_SI1%append_var("qi", qi_each_cat(:,:,:,1))
  
+          call ice_layers%append_time(time)
+!          print *, "about to append tsoil1"
+          call ice_layers%append_var("tsoil1",tsoil(:,:,:,1))
+!          print *, "about to append zsoil1"
+          call ice_layers%append_var("zsoil1",zsoil(:,:,:,1))
+          call ice_layers%append_var("ice_snow_thick1",ice_snow_thick(:,:,1))
+
           if (ncat.gt.1) then 
               call Met_SI2%append_time(time)
               call Met_SI2%append_var("u", u_each_cat(:,:,:,2))
@@ -1303,6 +1479,10 @@ PROGRAM ABL
               call Met_SI2%append_var("q", q_each_cat(:,:,:,2))
               call Met_SI2%append_var("qi", qi_each_cat(:,:,:,2))
 
+              call ice_layers%append_var("tsoil2",tsoil(:,:,:,2))
+              call ice_layers%append_var("zsoil2",zsoil(:,:,:,2))
+              call ice_layers%append_var("ice_snow_thick2",ice_snow_thick(:,:,2))
+
               if (ncat.gt.2) then      
                   call Met_SI3%append_time(time)
                   call Met_SI3%append_var("u", u_each_cat(:,:,:,3))
@@ -1311,6 +1491,10 @@ PROGRAM ABL
                   call Met_SI3%append_var("p", p_each_cat(:,:,:,3))
                   call Met_SI3%append_var("q", q_each_cat(:,:,:,3))
                   call Met_SI3%append_var("qi", qi_each_cat(:,:,:,3))
+
+                  call ice_layers%append_var("tsoil3",tsoil(:,:,:,3))
+                  call ice_layers%append_var("zsoil3",zsoil(:,:,:,3))
+                  call ice_layers%append_var("ice_snow_thick3",ice_snow_thick(:,:,3))
               endif
           endif
 
@@ -1347,10 +1531,10 @@ PROGRAM ABL
           enddo
         endif
 
-        print *, "appended et and srfv_all"
+!        print *, "appended et and srfv_all"
       enddo
       ! print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-      print *, "end do"
+!      print *, "end do"
       ! surface variable every hr_out _hours_
       IF(MOD(jh,hr_out).eq.0) then
         call Turb%append_time(time)

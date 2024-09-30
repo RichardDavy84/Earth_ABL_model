@@ -23,16 +23,32 @@
 /
 
 &seaice_info
+  ni = 10, ! This is the number of layers in the ice
   n_surf_cat = 3, ! if 1, no tiling. If > 1, the last category is open water
-  do_si_coupling = 0, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. ICs below!
+  do_si_coupling = 0, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. If -1, no response of sea ice to atmosphere. ICs below!
   ! This functionality needs to be adapted further! 
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
+  !! Pack ice situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.2, 0.02)
   init_sic = 0.90,
   init_sic_young = 0.05,
-  init_sit = 2.,
-  init_sit_young = 0.2,
-  init_snt = 0.2,
-  init_snt_young = 0.02
+  init_sit = 1.8,
+  init_sit_young = 0.01,
+  init_snt = 0.18,
+  init_snt_young = 0.001
+  !! MIZ situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.0, 0.0)
+  ! init_sic = 0.50,
+  ! init_sic_young = 0.0,
+  ! init_sit = 1.,
+  ! init_sit_young = 0.0,
+  ! init_snt = 0.2,
+  ! init_snt_young = 0.0
+/
+
+&forcing_info
+  repeat_forcing = 0, ! this repeats (-1) the first timestep or (1) the first day of the atmospheric forcing for the whole simulation, or (0) just uses forcing determined by time_info
+  use_d2m = 0,        ! this decides whether to use specific humidity directly from q2m, or to compute from d2m (formula from nextsim). ! Always set to 0 - function not working so now reads q2m after using build_q2m_from_d2m_slp.py
+  ! n_p_levels = 12,
+  ! pressure_levels = 700., 750., 775., 800., 825., 850., 875., 900., 925., 950., 975., 1000.
 /
 !  

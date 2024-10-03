@@ -24,6 +24,7 @@
 
 PROGRAM ABL
 
+  use omp_lib
   use io
 
   !-------------! Inputs needed are:
@@ -200,7 +201,7 @@ PROGRAM ABL
   !lat_name = "plat"
   !mask_name = "mask"
 
-  CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat,mask)
+  CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, mask)
 
   print *, "Read ", fname
   print *, "mgr = ", mgr
@@ -1052,6 +1053,12 @@ PROGRAM ABL
           do_merge_columns = 0
         endif
 
+!$OMP PARALLEL DEFAULT (SHARED) &
+!$OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
+!$OMP& PRIVATE(u_tmp2, v_tmp2, t_tmp2, q_tmp2, qi_tmp2, e_tmp2, ep_tmp2, uw_tmp2, vw_tmp2, km_tmp2, kh_tmp2, ustar_tmp2, p_tmp2) &
+!$OMP& PRIVATE(tld_tmp2, blht_tmp2, rif_blht_tmp2) &
+!$OMP& PRIVATE(area_conc_ow, area_conc)
+!$OMP DO
         do m = 1, mgr
           do n = 1, ngr
 
@@ -1396,6 +1403,8 @@ PROGRAM ABL
        
           enddo
         enddo
+!$OMP END DO
+!$OMP END PARALLEL
 
         time = time + dt;
         ERA_time = ERA_time  ! + dt;

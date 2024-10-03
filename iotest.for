@@ -7,7 +7,6 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       PROGRAM test_io
 
         USE io
-        USE datetime_module
 
         IMPLICIT NONE
 

@@ -25,7 +25,6 @@
 PROGRAM ABL
 
   use io
-  use datetime_module, only: datetime, timedelta
 
   !-------------! Inputs needed are:
   !.  albedo - Surface albedo

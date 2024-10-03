@@ -113,7 +113,8 @@ c      REAL*8 u_in,v_in
       REAL zm_at_p(nplev)
       REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
       REAL nudge_justbelow_bl
-      REAL zfrc_top,zfrc_bot,zfrc,rif_frac,hloc
+      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
+      INTEGER hloc
 
 c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      

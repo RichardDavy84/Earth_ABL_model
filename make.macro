@@ -20,6 +20,6 @@ LIB_NC_FROOT=/cluster/software/netCDF-Fortran/4.6.0-iimpi-2022a
 LIB_NC_CROOT=/cluster/software/netCDF/4.9.0-iimpi-2022a
 LIB_NC = -L${LIB_NC_FROOT}/lib -lnetcdff -L${LIB_NC_CROOT}/lib64 -lnetcdf
 
-FFLAGS = -g -I${tmp_dir} # -real-size 64 
-F90FLAGS = -g -I${tmp_dir} # -real-size 64
+FFLAGS = -g -I${tmp_dir} -qopenmp # -real-size 64 
+F90FLAGS = -g -I${tmp_dir} -qopenmp # -real-size 64
 LDFLAGS = -L${tmp_dir} ${LIB_HDF} ${INC_HDF} ${LIB_NC} 

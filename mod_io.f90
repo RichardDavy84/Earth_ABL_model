@@ -212,12 +212,29 @@ double precision function netCDF_time(self, time_in) result(time_out)
       enddo
     enddo
 
+    if (filename_st == "Moorings") then
+      do i = 1, size(elon2,1)
+        do j = 1, size(elon2,2)
+          if ( elon2(i,j) < 0. ) then
+            elon2(i,j) = elon2(i,j)+360.
+          else
+            elon2(i,j) = elon2(i,j)
+          endif
+        enddo
+      enddo
+    endif
+
+
     ! Calculate weights:
     if (filename_st == "ERA") then
       call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
     elseif (filename_st == "Moorings") then
       call calc_weights_2Dll(self, elon2, elat2, lon_fx, lat) !this will be different with 2d lat lon 
     endif
+    !print *, "elon2 is ",elon2
+    !print *, "elat2 is ",elat2
+    !print *, "lon_fx is ",lon_fx
+    !print *, "lat is ",lat
 
     ! TODO: Add 3D here
     ! Allocate data array
@@ -271,16 +288,18 @@ double precision function netCDF_time(self, time_in) result(time_out)
       allocate(data_ll(dimlens(1)+1, dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+      ! Fix to get periodic boundary
+      data_ll(dimlens(1)+1,:) = data_ll(1,:)
     elseif (filename_st == "Moorings") then
       print *, "size of Mooring ",dimlens(1),dimlens(2),dimlens(3)
       print *, "looking for time slice ",time_slice
-      allocate(data_ll(dimlens(2)+1, dimlens(3)))
-      call nc_read(fname, self%vname, data_ll(1:dimlens(2),1:dimlens(3)), &
-        start=[time_slice, 1, 1], count=[1, dimlens(2), dimlens(3)])
+      allocate(data_ll(dimlens(1), dimlens(2)))
+      call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
+        start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+      ! allocate(data_ll(dimlens(2)+1, dimlens(3)))
+      ! call nc_read(fname, self%vname, data_ll(1:dimlens(2),1:dimlens(3)), &
+      !   start=[time_slice, 1, 1], count=[1, dimlens(2), dimlens(3)])
     endif
-
-    ! Fix to get periodic boundary
-    data_ll(dimlens(1)+1,:) = data_ll(1,:)
 
     ! TODO: Add 3D here
     ! Interpolate to grid
@@ -456,10 +475,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
                 
               if (continue_now == 1) then
 
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lat_in(i_in,j_in),dst1)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lat_in(i_in+1,j_in),dst2)
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lat_in(i_in,j_in+1),dst3)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lat_in(i_in+1,j_in+1),dst4)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lon_in(i_in,j_in),dst1)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lon_in(i_in+1,j_in),dst2)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lon_in(i_in,j_in+1),dst3)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lon_in(i_in+1,j_in+1),dst4)
 
                 thismindst = MIN(dst1,dst2,dst3,dst4)
                 if (thismindst.lt.mindst) then
@@ -477,6 +496,11 @@ double precision function netCDF_time(self, time_in) result(time_out)
               endif
             enddo  
           enddo
+
+          !print *, "found ",i,j,lon_out(i,j),lat_out(i,j)
+          !print *, "found2 ",self%a_lon(i,j),self%a_lat(i,j)
+          !print *, "found2b ",lon_in(self%a_lon(i,j),self%a_lat(i,j)),lat_in(self%a_lon(i,j),self%a_lat(i,j))
+          !print *, "found3 ",dst1,dst2,dst3,dst4,mindst
 
       enddo
     enddo
@@ -501,8 +525,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! use Haversine formula to get minimum distances and weights
     phi1 = lat_1*pi/180.
     phi2 = lat_2*pi/180.
-    delta_phi = (lat_2-lat_1)*pi/180.
-    delta_lambda = (lon_2-lon_1)*pi/180.
+    delta_phi = abs(lat_2-lat_1)*pi/180.
+    delta_lambda = abs(lon_2-lon_1)*pi/180.
 
     a = SIN(delta_phi/2.)**2 + COS(phi1)*COS(phi2)*SIN(delta_lambda/2.)**2
     c = 2*atan2(SQRT(a), SQRT(1-a))
@@ -551,6 +575,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
           scale_2 = self%r2(i,j)/scale_sum
           scale_3 = self%s(i,j)/scale_sum
           scale_4 = self%s2(i,j)/scale_sum
+          !print *, "datad", data_in_1,data_in_2,data_in_3,data_in_4
+          !print *, "datas", scale_1,scale_2,scale_3,scale_4,scale_sum
+          !print *, "datat ",data_in(283,501)
+          !print *, "datat ",data_in(501,283)
 !          print *, "sum of Moorings scales ",scale_1+scale_2+scale_3+scale_4
         endif
 
@@ -691,7 +719,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
 ! Routine to initialise a netCDF file
 !   - We write the x, y, and time dimensions, mask, and lat/lon coords
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_netCDF(self, fname, mgr, ngr, mask, lon, lat, zm, zt, zgnd, nz)
+  subroutine init_netCDF(self, fname, mgr, ngr, mask, lon, lat, zm, zt, zp, zgnd, nz)
 
     implicit none
 
@@ -700,7 +728,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     integer, intent(in) :: mgr, ngr
     integer, dimension(:,:), intent(in) :: mask
     real, dimension(:,:), intent(in) :: lon, lat
-    real, dimension(:), intent(in), optional :: zm, zt, zgnd
+    real, dimension(:), intent(in), optional :: zm, zt, zp, zgnd
     integer, intent(in), optional :: nz
 
     ! Working variables
@@ -723,6 +751,9 @@ double precision function netCDF_time(self, time_in) result(time_out)
     endif
     if ( present(zt) ) then
       call nc_write_dim(self%fname, "zt", zt, units="m")
+    endif
+    if ( present(zp) ) then
+      call nc_write_dim(self%fname, "zp", zp, units="hPa")
     endif
     if ( present(zgnd) ) then
       call nc_write_dim(self%fname, "zgnd", zgnd, units="m")

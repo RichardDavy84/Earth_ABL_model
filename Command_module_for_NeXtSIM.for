@@ -28,7 +28,7 @@ c***********************************************************************
      1    sic, sit, snt, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
-     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling,
+     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_800, 
      1    gflux, lw_net, sw_net, h0, e0)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
@@ -119,7 +119,7 @@ c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
       REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
-      INTEGER do_si_coupling
+      INTEGER do_si_coupling, nudge_800
 
       REAL Tsurf_tmp,hs
 
@@ -257,6 +257,18 @@ c            print *, "zfrc ",zfrc
           endif
         endif
       enddo
+
+c     For 800hPa case, only want to adjust where p is there. So set
+c     minLoc and maxLoc accordingly
+      if (nudge_800.eq.1) then
+        do jj=1,nj ! Loop over z levels, find which one each height is in
+          hloc = minloc(abs(hPa-p(jj)/100.),1) ! This is the closest
+          if (hPa(hloc) == 800.) then
+              min_Loc = jj
+              max_Loc = jj
+          endif
+        enddo
+      endif
 
 c      print *, "NEED TO MAKE THIS MORE ROBUST"
       do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
@@ -580,10 +592,14 @@ c       we don't need to do this update of dzeta every time step! ...
 c        ice_snow_thick = (sit + snt)/sic
 c        CALL compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni) ! this is now done just before the loop
 
+c        print *, "T: sit+snt ",sit+snt
         if ((sit + snt).eq.0.) then
+c          print *, "T: set to freezzing"
           t(1) = 271.15
+          tsoil(1) = 271.15
 c          print *, "t after soiltdm", t
         else
+c          print *, "T: NOT set to freezzing"
 c          print *, "inputs to soiltdm"
 c          print *, "dedzs"
 c          print *, dedzs
@@ -603,12 +619,13 @@ c          print *, ds
 c          print *, "ni"
 c          print *, ni
 
-          if (sic.gt.0.) then
-              hs = snt/sic
-          else
-              hs = 0.
-          endif
-          
+c          if (sic.gt.0.) then
+c              hs = snt/sic
+c          else
+c              hs = 0.
+c          endif
+           hs = snt
+
 c          print *, "before decisions, t(1) and tsoil are ",t(1),tsoil(1)
 
           if (do_si_coupling.eq.1) then 
@@ -621,6 +638,7 @@ c          print *, "before decisions, t(1) and tsoil are ",t(1),tsoil(1)
 c              print *, "input to soiltdm ",tsoil
               CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
 c              print *, "t1 soil setting b4 ",t(1)
+              tsoil(1)=MAX(MIN(tsoil(1),350.),200.)
               t(1)=MAX(MIN(tsoil(1),350.),200.)
 c              print *, "t1 soil setting af ",t(1)
           elseif (do_si_coupling.eq.0) then    
@@ -665,6 +683,7 @@ c          call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and 
 c          print *, "INTEG new sit and snt",sit,snt
         endif
         betag=grav/t(1)
+c        print *, "T: END LOOP"
 c        print *, "TSOIL_NOW ",tsoil
 
 cc++++++++++++++Calculating surface temperature over ice

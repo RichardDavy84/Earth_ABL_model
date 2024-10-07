@@ -72,7 +72,7 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Grid information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ngr, mgr, igr, jgr
+  INTEGER :: ngr, mgr, igr, jgr, land_value
   INTEGER, DIMENSION(:,:), ALLOCATABLE :: mask
   REAL, DIMENSION(:,:), ALLOCATABLE :: rlat, rlon
   REAL, DIMENSION(nj) :: zm, zt, dedzm, dedzt
@@ -86,6 +86,7 @@ PROGRAM ABL
   TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
   TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
+  TYPE(input_var) :: sic_init, sit_init, snt_init, sic2_init, sit2_init, snt2_init ! Currently from nextsim or ERA5
   REAL :: u850, v850, t850, sdlw, sdsw, ntlw, ntsw,mslhf,msshf
   REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
   REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf !for conductive heat flux
@@ -118,7 +119,9 @@ PROGRAM ABL
 !  REAL hPa(nplev)
   REAL, DIMENSION(:,:,:,:), ALLOCATABLE:: dedzs,tsoil,zsoil
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: dzeta, ct_ice, z0, albedo, semis
+  REAL, DIMENSION(:), ALLOCATABLE:: const_z0 ! a) set to a number definitely bigger than ncat! b) This might change to an input file if mxn
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: gflux, lw_net, sw_net, h0, e0
+  REAL, DIMENSION(nplev) :: zp 
 
   INTEGER :: repeat_forcing
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -142,11 +145,11 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_800
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  type(output_file) :: init_cond, srfv_all, Turb, Met, Met_SI1, Met_SI2, Met_SI3, srfv_balance, ice_layers
+  type(output_file) :: init_cond, srfv_all, Turb, Met, Met_SI1, Met_SI2, Met_SI3, srfv_balance, ice_layers, ERA_vals
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
@@ -154,7 +157,7 @@ PROGRAM ABL
   INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
   INTEGER :: ds
   INTEGER :: merge_ds, merge_cnt
-  CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
+  CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name, si_ics_ftype
   REAL :: ha, tint
 !  INTEGER, PARAMETER :: hoursec = 86400
   INTEGER, PARAMETER :: hoursec = 3600
@@ -162,7 +165,7 @@ PROGRAM ABL
   REAL(KIND=8) :: slon
 
   INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
-  REAL :: init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+  REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init
 
   REAL :: q0_val
 
@@ -170,17 +173,25 @@ PROGRAM ABL
  
   ! Read basic namelist
   open(unit=10, file='setup_info.nml', status='old')
-  namelist /grid_info/ fname, lon_name, lat_name, mask_name 
+  namelist /grid_info/ fname, lon_name, lat_name, mask_name, land_value 
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
-  namelist /merge_info/ do_tiling, merge_seconds
-  namelist /seaice_info/ ni, n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
-  namelist /forcing_info/ repeat_forcing, use_d2m !, n_p_levels, pressure_levels
+  namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
+  namelist /seaice_info/ ni, do_si_coupling, do_si_ics, si_ics_ftype 
+  namelist /forcing_info/ repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
+  namelist /constants_info/ const_z0, const_sic_init, const_sit_init, const_snt_init
 
   read(10, nml=grid_info)
   read(10, nml=time_info)
   read(10, nml=merge_info)
   read(10, nml=seaice_info)
   read(10, nml=forcing_info)
+
+  ALLOCATE(const_z0(n_surf_cat))
+  ALLOCATE(const_sic_init(n_surf_cat))
+  ALLOCATE(const_sit_init(n_surf_cat))
+  ALLOCATE(const_snt_init(n_surf_cat))
+
+  read(10, nml=constants_info)
 
   close(10)
 
@@ -209,6 +220,7 @@ PROGRAM ABL
 
   print *, "maxval(rlon) = ", maxval(rlon), "minval(rlon) = ", minval(rlon)
   print *, "maxval(rlat) = ", maxval(rlat), "minval(rlat) = ", minval(rlat)
+  print *, "mask ",mask
 
   ! TODO: Time information from namelist
   ! time0 = datetime(2007,01,01)
@@ -295,6 +307,8 @@ PROGRAM ABL
 !  hPa(10)=950.
 !  hPa(11)=975.
 !  hPa(12)=1000.
+
+  zp = (/ 1000.,975.,950.,925.,900.,875.,850.,825.,800.,775.,750.,700. /)
 
   ! Time dependent forcing
   call u850_now%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
@@ -408,6 +422,28 @@ PROGRAM ABL
   call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+
+  if (do_si_ics.eq.2) then
+      if (si_ics_ftype=="Moorings") then
+          call sic_init%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sic_init%read_input(time0, "Moorings")
+          call sit_init%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sit_init%read_input(time0, "Moorings")
+          call snt_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call snt_init%read_input(time0, "Moorings")
+          call sic2_init%init("sic_thin","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sic2_init%read_input(time0, "Moorings")
+          call sit2_init%init("sit_thin","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sit2_init%read_input(time0, "Moorings")
+          call snt2_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call snt2_init%read_input(time0, "Moorings")
+      else
+          call sic_init%init("siconc", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+          call sic_init%read_input(time0, "ERA")
+          ! WHAT TO DO FOR SNOW???
+      endif
+  endif  
+
   print *, "____ READ IN SST??? ________"
 
   print *, "initialised some"
@@ -440,27 +476,15 @@ PROGRAM ABL
   print *, "read_input some f"
 
   do m = 1, mgr
-    do n = 1, ngr
+   do n = 1, ngr
 
-      ! Skip the land points
-      if ( mask(m,n) .eq. 0 ) continue
-
-!      print *, "initializing: about to call"
-!      print *, "albedo ",albedo(m,n,:)
-!      print *, "u850 from file ",u850_now%get_point(m,n)
-!      print *, "v850 from file ",v850_now%get_point(m,n)
-!      print *, "slon ",slon
-!      print *, "semis ",semis(m,n,:)
-!      print *, "rlat ",rlat(m,n)
-!      print *, "z0 ",z0(m,n,:)
-!      print *, "taur ",taur(m,n)
-!      print *, "p0 ",p0%get_point(m,n)
-
-!      u_in = u850_now%get_point(m,n)
-!      v_in = v850_now%get_point(m,n)
-!      p_in = p0%get_point(m,n)
-!      q_in = q0%get_point(m,n)
-!      t_in = t0%get_point(m,n)
+    ! Skip the land points
+    print *, " mask(m,n) ", mask(m,n)
+    if ( mask(m,n) .eq. land_value ) then
+       print *, "land: NOT CONTINUING, ",m,n
+    endif       
+    if ( mask(m,n) .ne. land_value ) then ! continue
+       print *, " not land: continuing",m,n
 
        u_hPa(m,n,12) = u700_now%get_point(m,n)
        u_hPa(m,n,11) = u750_now%get_point(m,n)
@@ -526,22 +550,136 @@ PROGRAM ABL
 
       !!! Hack for now
       do n_si = 1,ncat
-        z0(m,n,n_si) = 0.001 ! this is the surface roughness I believe
+        z0(m,n,n_si) = const_z0(n_si) ! this is the surface roughness I believe
       enddo
-      ! Choose some initial sea ice conditions
-      sic(m,n,1) = init_sic !0.50 ! 0.90
-      sit(m,n,1) = init_sit
-      snt(m,n,1) = init_snt
-      if (ncat.gt.1) then 
-          sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
-          sit(m,n,ncat) = 0.
-          snt(m,n,ncat) = 0.
-          if (ncat.gt.2) then
-              sic(m,n,2) = init_sic_young  
-              sit(m,n,2) = init_sit_young
-              snt(m,n,2) = init_snt_young
+      ! Now read in sea ice ICs
+      if (do_si_ics.eq.1) then
+        do n_si = 1,ncat
+            sic(m,n,n_si) = const_sic_init(n_si)
+            if (n_si.lt.ncat) then
+                sit(m,n,n_si) = const_sit_init(n_si)
+                snt(m,n,n_si) = const_snt_init(n_si)
+            else
+                sit(m,n,n_si) = 0.
+                snt(m,n,n_si) = 0.
+            endif
+            ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+        enddo
+      elseif (do_si_ics.eq.2) then
+        ! If we want to read in ICs from data, need to be more careful. This is quite hard-coded for now!
+        ! Quickly set up open water 
+        sic(m,n,ncat) = 1. ! Even though we have a list of 3 in the setup file, do this here to make sure that it adds up to 1
+        sit(m,n,ncat) = 0.
+        snt(m,n,ncat) = 0.
+        ice_snow_thick(m,n,ncat) = 0.
+        ! Now for the sea ice categories
+        sic(m,n,1) = sic_init%get_point(m,n)
+        !print *, "ICs 0 ",sic(m,n,1)
+        ! First, check that the sea ice concentration is between zero and one. If not, it is land and we don't compute it      
+        if ( (sic(m,n,1).ge.0) .AND. (sic(m,n,1).le.1)) then       
+          if (si_ics_ftype=="Moorings") then
+            ! Situation 1: one category of sea ice, one of open water
+            if (ncat.lt.3) then ! does this apply to one category too? Shouldn't only have ice, there's always an open water
+                ! option... but if we want to do the merged category by only running one category, we still treat nextsim input like
+                ! this
+                if (sic(m,n,1).gt.0) then
+                    sit(m,n,1) = sit_init%get_point(m,n)/sic_init%get_point(m,n)
+                    snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n)
+                else
+                    sit(m,n,1) = 0.
+                    snt(m,n,1) = 0.
+                endif
+                ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
+            elseif (ncat.gt.2) then
+                !print *, "ICs cats"
+                sic(m,n,2) = sic2_init%get_point(m,n)
+                sic(m,n,1) = sic_init%get_point(m,n) - sic(m,n,2) ! Important! Remember in nextsim sic = thick plus thin
+                if (sic(m,n,1).gt.0) then
+                    ! nextsim-specific handling where divide by sic
+                    ! For thick category:
+                    if (sic(m,n,2).lt.sic(m,n,1)) then ! there is some thick ice (sic(m,n,1) = thick ice plus thin ice remember)
+                        !print *, "ICs cats 1, sit ",sit_init%get_point(m,n)-sit2_init%get_point(m,n),sic(m,n,1) - sic(m,n,2)
+                        !print *, "ICs cats 1a, sit ",sit_init%get_point(m,n)
+                        sit(m,n,1)=(sit_init%get_point(m,n)-sit2_init%get_point(m,n))/(sic(m,n,1) - sic(m,n,2))
+                        snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
+                        ! open water conc
+                        sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
+                    else ! there is no thick ice
+                        !print *, "ICs cats 2"
+                        sit(m,n,1) = 0.
+                        snt(m,n,1) = 0.
+                    endif
+                endif
+                if (sic(m,n,2).gt.0) then ! there is young (thin) ice
+                    !print *, "ICs cats 3, sit ",sit2_init%get_point(m,n),sic2_init%get_point(m,n)
+                    ! For young category:
+                    sit(m,n,2) = sit2_init%get_point(m,n)/sic2_init%get_point(m,n)
+                    snt(m,n,2) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
+                    ! open water conc
+                    sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,2)
+                else
+                    !print *, "ICs cats 4"
+                    sit(m,n,2) = 0.
+                    snt(m,n,2) = 0.
+                endif
+                ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
+                ice_snow_thick(m,n,2) = sit(m,n,2) + snt(m,n,2)
+            elseif (ncat.gt.3) then
+                ! in this situation, just loop over remaining categories for inputs from the constants (if any categories left)
+                do n_si = 3,ncat-1
+                    sit(m,n,n_si) = const_sit_init(n_si)
+                    snt(m,n,n_si) = const_snt_init(n_si)
+                    sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,n_si)
+                enddo
+            endif
+            !print *, "ICs 1a ",sic(m,n,1),sit(m,n,1),snt(m,n,1)
+            !print *, "ICs 2a ",sic(m,n,2),sit(m,n,2),snt(m,n,2)
+            !print *, "ICs 3a ",sic(m,n,3),sit(m,n,3),snt(m,n,3)
+            !print *, "ICs 4a ",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2),ice_snow_thick(m,n,3)
+          elseif (si_ics_ftype=="ERA") then
+            ! In ERA, we only have thickness of 1.5m in reanalysis computation, and no variable output. Use constants set in setup
+            sit(m,n,1) = const_sit_init(1)
+            snt(m,n,1) = const_snt_init(1)
+            ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
+            sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
+            if (ncat.gt.2) then
+                ! In ERA, we only have one ice category. If we want others, we need nonzero conc in constants and read from there
+                do n_si = 2,ncat-1
+                    sic(m,n,n_si) = MIN(const_sic_init(n_si),sic(m,n,ncat)) ! Any remaining category conc is limited by OW conc
+                    sit(m,n,n_si) = const_sit_init(n_si) 
+                    snt(m,n,n_si) = const_snt_init(n_si)
+                    ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+                    sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,n_si)
+                enddo
+            endif
           endif
+        !print *, "ICs 1 ",sic(m,n,1),sit(m,n,1),snt(m,n,1)
+        !print *, "ICs 2 ",sic(m,n,2),sit(m,n,2),snt(m,n,2)
+        !print *, "ICs 3 ",sic(m,n,3),sit(m,n,3),snt(m,n,3)
+        !print *, "ICs 4 ",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2),ice_snow_thick(m,n,3)
+        else
+          mask(m,n) = land_value
+          do n_si = 1,ncat
+            sic(m,n,n_si) = 0.
+            sit(m,n,n_si) = 0.
+            snt(m,n,n_si) = 0.
+          enddo      
+        endif 
       endif
+      ! Choose some initial sea ice conditions
+      !sic(m,n,1) = sic_init !0.50 ! 0.90
+      !sit(m,n,1) = sit_init
+      !snt(m,n,1) = snt_init
+      !if (ncat.gt.1) then 
+      !    sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
+      !    sit(m,n,ncat) = 0.
+      !    snt(m,n,ncat) = 0.
+      !    if (ncat.gt.2) then
+      !        sic(m,n,2) = sic_init_young  
+      !        sit(m,n,2) = sit_init_young
+      !        snt(m,n,2) = snt_init_young
+      !    endif
+      !endif
       !  if (n_si.lt.ncat) then
       !    sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
       !    ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
@@ -562,22 +700,6 @@ PROGRAM ABL
 !!    Settings for "soil" code
       ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
      
-!      print *, "Check this ice_snow_thick"
-      if (sic(m,n,1).gt.0) then
-          ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))/sic(m,n,1)
-      else
-          ice_snow_thick(m,n,1) = 0.
-      endif
-      if (ncat.gt.3) then
-          print *, "PROBLEM! 3 is the maximum number of categories allowed"
-      elseif (ncat.gt.2) then ! ncat=1: just one thickness. ncat=2: only one SI category     
-          if (sic(m,n,2).gt.0) then
-              ice_snow_thick(m,n,2) = (sit(m,n,2) + snt(m,n,2))/sic(m,n,2)
-          else
-              ice_snow_thick(m,n,2) = 0.
-          endif
-      endif
-
       ! Do some initialising
       dedzs(m,n,:,:) = 0.
       tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
@@ -684,7 +806,8 @@ PROGRAM ABL
 !      enddo
       blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
 
-    enddo
+    endif 
+   enddo
   enddo
 
 
@@ -771,6 +894,15 @@ PROGRAM ABL
       endif
   endif
 
+  print *, "zm",zm
+  print *, "zp",zp
+
+  call ERA_vals%init('ERA_values.nc', mgr, ngr, mask, rlon, rlat, zp=zp)
+  call ERA_vals%add_var("dummy","zp")
+  call ERA_vals%add_var("ERA_t","zp") 
+  call ERA_vals%add_var("ERA_u","zp") 
+  call ERA_vals%add_var("ERA_v","zp") 
+
   call srfv_balance%init('SRFV-BALANCE.nc', mgr, ngr, mask, rlon, rlat)
   call srfv_balance%add_var("dummy")
   call srfv_balance%add_var("gflux1")
@@ -803,6 +935,9 @@ PROGRAM ABL
   call ice_layers%add_var("ice_snow_thick1")
   call ice_layers%add_var("ice_snow_thick2")
   call ice_layers%add_var("ice_snow_thick3")
+  call ice_layers%add_var("ice_conc1")
+  call ice_layers%add_var("ice_conc2")
+  call ice_layers%add_var("ice_conc3")
   ! call ice_layers%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
   !print *, "here 3"
   !call ice_layers%append_var("zsoil1", zsoil(:,:,:,1))
@@ -859,6 +994,7 @@ PROGRAM ABL
   call init_cond%append_var("tld", tld_each_cat(:,:,:,1))
   call init_cond%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
   call init_cond%append_var("zsoil1", zsoil(:,:,:,1))
+
 
 !  print *, "we are initialilsing zm in Met.nc as "
 !  print *, zm
@@ -1054,10 +1190,11 @@ PROGRAM ABL
         endif
 
         do m = 1, mgr
-          do n = 1, ngr
+         do n = 1, ngr
 
-            ! Skip the land points
-            if ( mask(m,n) .eq. 0 ) continue
+          ! Skip the land points
+          if ( mask(m,n) .ne. land_value ) then ! continue
+            ! if ( mask(m,n) .eq. 0 ) continue
 
             ! Time integration
             tint = real(jm-1)/real(nmts)
@@ -1204,12 +1341,6 @@ PROGRAM ABL
                 ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
                 ! call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !                print *, "HCRTil loop for integrate ",n_si
-                if (sic(m,n,n_si).gt.0) then
-                    ice_snow_thick(m,n,n_si) = (sit(m,n,n_si) + snt(m,n,n_si))/sic(m,n,n_si) 
-                    print *, "NEED TO FIX FOR THE EXAMPLE OF A DISAPPEARING CATEGORY!"
-                else
-                    ice_snow_thick(m,n,n_si) = 0.
-                endif
 !                print *, "NEWLOOP new sit and snt ",sit(m,n,n_si),snt(m,n,n_si),ice_snow_thick(m,n,n_si),", nsi ",n_si
 !                print *, "ice_snow_thick for dzeta and n_si = ",n_si," is ",ice_snow_thick(m,n,n_si)
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
@@ -1244,6 +1375,7 @@ PROGRAM ABL
 !                print *, "Tsurf from, n_si = ",n_si
 !                print *, "gflux vals will be for n_si = ",n_si,", Tsurf is ",t_each_cat(m,n,1,n_si)
 !                print *, "THETA INT BEFORE ",theta(m,n,1),theta(m,n,2),theta(m,n,nj)
+!                print *, "****** CATEGORY ",n_si," ********"
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
@@ -1276,12 +1408,13 @@ PROGRAM ABL
                   !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
-                  do_si_coupling, & 
+                  do_si_coupling, nudge_800, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
+                !print *, "T: n_si ",n_si,m,n,tsoil(m,n,1,n_si)
                 !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
                 !print *, "check lw_net af is ",lw_net(m,n,n_si)
             enddo
-            print *, "gflux to be output ",gflux
+            ! print *, "gflux to be output ",gflux
 
             !! After each loop, make sure we update the main arrays with a
             !merged column. BUT only use this merged array to force the next
@@ -1395,7 +1528,8 @@ PROGRAM ABL
             !   enddo
             ! endif 
        
-          enddo
+          endif
+         enddo
         enddo
 
         time = time + dt;
@@ -1442,6 +1576,11 @@ PROGRAM ABL
           call srfv_balance%append_var("h03",h0(:,:,3))
           call srfv_balance%append_var("e03",e0(:,:,3))
 
+          call ERA_vals%append_time(time)
+          call ERA_vals%append_var("ERA_t",t_hPa)
+          call ERA_vals%append_var("ERA_u",u_hPa)
+          call ERA_vals%append_var("ERA_v",v_hPa)
+
           ! Heather moved to here so we have more frequent output
 !          print *, "APPENDIGN THIS U ",u
           call Met%append_time(time)
@@ -1469,6 +1608,7 @@ PROGRAM ABL
 !          print *, "about to append zsoil1"
           call ice_layers%append_var("zsoil1",zsoil(:,:,:,1))
           call ice_layers%append_var("ice_snow_thick1",ice_snow_thick(:,:,1))
+          call ice_layers%append_var("ice_conc1",sic(:,:,1))
 
           if (ncat.gt.1) then 
               call Met_SI2%append_time(time)
@@ -1482,6 +1622,7 @@ PROGRAM ABL
               call ice_layers%append_var("tsoil2",tsoil(:,:,:,2))
               call ice_layers%append_var("zsoil2",zsoil(:,:,:,2))
               call ice_layers%append_var("ice_snow_thick2",ice_snow_thick(:,:,2))
+              call ice_layers%append_var("ice_conc2",sic(:,:,2))
 
               if (ncat.gt.2) then      
                   call Met_SI3%append_time(time)
@@ -1495,6 +1636,7 @@ PROGRAM ABL
                   call ice_layers%append_var("tsoil3",tsoil(:,:,:,3))
                   call ice_layers%append_var("zsoil3",zsoil(:,:,:,3))
                   call ice_layers%append_var("ice_snow_thick3",ice_snow_thick(:,:,3))
+                  call ice_layers%append_var("ice_conc3",sic(:,:,3))
               endif
           endif
 

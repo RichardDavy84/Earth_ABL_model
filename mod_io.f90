@@ -72,7 +72,7 @@ module io
   end type
 
   public :: read_grid, output_file, input_var
-  private :: bisect, push_back
+  private :: bisect
 
   contains
 
@@ -359,9 +359,9 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Use c_strftime to format the time part of the file name
     if ( filename_st == "ERA" ) then
-      i = c_strftime(fname, len(fname), self%fname_format, time%tm())
+      i = c_strftime(fname, len(fname)+1, self%fname_format, time%tm())
     elseif ( filename_st == "Moorings" ) then
-      i = c_strftime(fname, len(fname), self%fname_format2, time%tm())
+      i = c_strftime(fname, len(fname)+1, self%fname_format2, time%tm())
     endif
 
     if ( filename_st == "ERA" ) then
@@ -785,7 +785,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     call variable%init(vname, zdim, long_name, standard_name, units, grid_mapping, missing_value)
 
-    self%var_list = push_back(self%var_list, variable)
+    ! Append the variable to the list of variables
+    if ( allocated(self%var_list) ) then
+      self%var_list = [self%var_list, variable]
+    else
+      self%var_list = variable
+    endif
 
   end subroutine add_var
 
@@ -898,33 +903,5 @@ double precision function netCDF_time(self, time_in) result(time_out)
     enddo
 
   end subroutine append_var_3D
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! std::vector.push_back (kind of)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  function push_back(varlist_in, variable) result(varlist_out)
-
-    type(output_var), dimension(:), allocatable, intent(in) :: varlist_in
-    type(output_var), intent(in) :: variable
-
-    type(output_var), dimension(:), allocatable :: varlist_out
-
-    ! Working variables
-    integer :: i
-
-    if ( .not. allocated(varlist_in) ) then
-      allocate(varlist_out(1))
-      varlist_out(1) = variable
-    else
-      allocate(varlist_out(size(varlist_in)+1))
-
-      do i=1, size(varlist_in)
-        varlist_out(i) = varlist_in(i)
-      enddo
-
-      varlist_out(size(varlist_in)) = variable
-    endif
-
-  end function push_back
 
 end module io

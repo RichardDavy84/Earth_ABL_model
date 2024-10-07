@@ -1,0 +1,12 @@
+# Settings for the Makefile when running on fram with
+# netCDF-Fortran/4.6.0-iimpi-2022a loaded (and ncio and datetime-fortran libs
+# and includes located in $HOME/lib and $HOME/include)
+
+FC = ifort
+# MODFLAG should be -J gfort and -module for ifort
+# It's for the option to tell the compiler where to place module files
+MODFLAG = -module
+
+FFLAGS = -g -traceback -check all -debug all -ftrapuv -qopenmp -I${HOME}/include
+F90FLAGS = ${FFLAGS}
+LDFLAGS = -L${HOME}/lib

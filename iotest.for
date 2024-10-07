@@ -32,7 +32,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr,
      1                                                  rlon, rlat,mask)
 
-        print *, "Read ", fname
+        print *, "Read ", trim(fname)
         print *, "mgr = ", mgr
         print *, "ngr = ", ngr
 
@@ -105,7 +105,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 ! Write the intrapolation results to file
         fname = "msl_interp.nc"
-        print *, fname
+        print *, trim(fname)
         call interp_out%init(fname, mgr, ngr, mask, rlon, rlat)
         call interp_out%add_var("msl",
      1      long_name="interpolated_msl",

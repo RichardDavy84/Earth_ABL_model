@@ -29,8 +29,8 @@ module io
 
     character(len=long_string), private :: fname_format = "${dir}/ERA5_${var}_y%Y.nc"
     character(len=long_string), private :: fname_format2 = "${dir}/Moorings_%Ym%m.nc"
-    character(len=9), private :: lon_name = "longitude"
-    character(len=8), private :: lat_name = "latitude"
+    character(len=short_string), private :: lon_name = "longitude"
+    character(len=short_string), private :: lat_name = "latitude"
 
     contains
       procedure, public :: init=>init_input_var, read_input, get_point, get_array
@@ -93,17 +93,17 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Express the difference between time_in and reference time in time_unit
     dt = time_in - strptime(trim(self%reference_time), trim(self%time_format))
 
-    if ( self%time_unit .eq. "seconds" ) then
+    select case ( self%time_unit )
+    case ( "seconds" )
       time_out = dt%total_seconds()
-      return
-    elseif ( self%time_unit .eq. "hours" ) then
+    case ( "hours" )
       time_out = dt%total_seconds()/3600.
-      return
-    elseif ( self%time_unit .eq. "days" ) then
+    case ( "days" )
       time_out = dt%total_seconds()/86400.
-    else
-      stop "mod_io: netCDF_time: Case not recognised:"!//trim(self%time_unit)//" not recognised"
-    endif
+    case default
+      stop "mod_io: netCDF_time: Time unit '"//trim(self%time_unit)//"' not recognised"
+      stop "mod_io: netCDF_time: Time unit not recognised:"
+    end select
 
     end function netCDF_time
 
@@ -264,7 +264,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Get file name
     fname = self%get_filename(time, filename_st)
-    print *, "filename is ",fname
 
     ! Deduce the time slice
     if (filename_st == "ERA") then

@@ -56,6 +56,8 @@ PROGRAM ABL
 
   INTEGER, PARAMETER :: dbl=8
 
+  ! integer :: time_start, time_finish, count_rate
+  ! real :: time_elapsed
   ! TODO: Read nj in from namelist
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -438,7 +440,7 @@ PROGRAM ABL
   call v850_now%read_input(time0, "ERA")
 
   print *, "read_input some f"
-
+ 
   do m = 1, mgr
     do n = 1, ngr
 
@@ -686,7 +688,6 @@ PROGRAM ABL
 
     enddo
   enddo
-
 
 !  u850_init_HR = u850_now%get_point(1,1)
 !  v850_init_HR = v850_now%get_point(1,1)
@@ -1055,8 +1056,9 @@ PROGRAM ABL
 
 !$OMP PARALLEL DEFAULT (SHARED) &
 !$OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
-!$OMP& PRIVATE(u_tmp2, v_tmp2, t_tmp2, q_tmp2, qi_tmp2, e_tmp2, ep_tmp2, uw_tmp2, vw_tmp2, km_tmp2, kh_tmp2, ustar_tmp2, p_tmp2) &
-!$OMP& PRIVATE(tld_tmp2, blht_tmp2, rif_blht_tmp2) &
+!$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
+!$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
+!$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
 !$OMP& PRIVATE(area_conc_ow, area_conc)
 !$OMP DO
         do m = 1, mgr
@@ -1212,7 +1214,7 @@ PROGRAM ABL
 !                print *, "HCRTil loop for integrate ",n_si
                 if (sic(m,n,n_si).gt.0) then
                     ice_snow_thick(m,n,n_si) = (sit(m,n,n_si) + snt(m,n,n_si))/sic(m,n,n_si) 
-                    print *, "NEED TO FIX FOR THE EXAMPLE OF A DISAPPEARING CATEGORY!"
+!                    print *, "NEED TO FIX FOR THE EXAMPLE OF A DISAPPEARING CATEGORY!"
                 else
                     ice_snow_thick(m,n,n_si) = 0.
                 endif
@@ -1287,7 +1289,7 @@ PROGRAM ABL
                 !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
                 !print *, "check lw_net af is ",lw_net(m,n,n_si)
             enddo
-            print *, "gflux to be output ",gflux
+!            print *, "gflux to be output ",gflux
 
             !! After each loop, make sure we update the main arrays with a
             !merged column. BUT only use this merged array to force the next

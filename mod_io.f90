@@ -212,6 +212,18 @@ double precision function netCDF_time(self, time_in) result(time_out)
       enddo
     enddo
 
+    if (filename_st == "Moorings") then
+      do i = 1, size(elon2,1)
+        do j = 1, size(elon2,2)
+          if ( elon2(i,j) < 0. ) then
+            elon2(i,j) = elon2(i,j)+360.
+          else
+            elon2(i,j) = elon2(i,j)
+          endif
+        enddo
+      enddo
+    endif
+
     ! Calculate weights:
     if (filename_st == "ERA") then
       call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
@@ -271,16 +283,18 @@ double precision function netCDF_time(self, time_in) result(time_out)
       allocate(data_ll(dimlens(1)+1, dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+      ! Fix to get periodic boundary
+      data_ll(dimlens(1)+1,:) = data_ll(1,:)
     elseif (filename_st == "Moorings") then
       print *, "size of Mooring ",dimlens(1),dimlens(2),dimlens(3)
       print *, "looking for time slice ",time_slice
-      allocate(data_ll(dimlens(2)+1, dimlens(3)))
-      call nc_read(fname, self%vname, data_ll(1:dimlens(2),1:dimlens(3)), &
-        start=[time_slice, 1, 1], count=[1, dimlens(2), dimlens(3)])
+      allocate(data_ll(dimlens(1), dimlens(2)))
+      call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
+        start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
     endif
 
     ! Fix to get periodic boundary
-    data_ll(dimlens(1)+1,:) = data_ll(1,:)
+    !data_ll(dimlens(1)+1,:) = data_ll(1,:)
 
     ! TODO: Add 3D here
     ! Interpolate to grid
@@ -456,10 +470,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
                 
               if (continue_now == 1) then
 
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lat_in(i_in,j_in),dst1)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lat_in(i_in+1,j_in),dst2)
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lat_in(i_in,j_in+1),dst3)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lat_in(i_in+1,j_in+1),dst4)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lon_in(i_in,j_in),dst1)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lon_in(i_in+1,j_in),dst2)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lon_in(i_in,j_in+1),dst3)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lon_in(i_in+1,j_in+1),dst4)
 
                 thismindst = MIN(dst1,dst2,dst3,dst4)
                 if (thismindst.lt.mindst) then
@@ -501,8 +515,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! use Haversine formula to get minimum distances and weights
     phi1 = lat_1*pi/180.
     phi2 = lat_2*pi/180.
-    delta_phi = (lat_2-lat_1)*pi/180.
-    delta_lambda = (lon_2-lon_1)*pi/180.
+    delta_phi = abs(lat_2-lat_1)*pi/180.
+    delta_lambda = abs(lon_2-lon_1)*pi/180.
 
     a = SIN(delta_phi/2.)**2 + COS(phi1)*COS(phi2)*SIN(delta_lambda/2.)**2
     c = 2*atan2(SQRT(a), SQRT(1-a))

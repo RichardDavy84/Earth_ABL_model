@@ -788,6 +788,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     if ( allocated(self%var_list) ) then
       self%var_list = [self%var_list, variable]
     else
+      allocate(self%var_list(1))
       self%var_list = variable
     endif
 

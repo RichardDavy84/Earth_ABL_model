@@ -76,6 +76,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! First step and output
         output2D = 0.0
         output3D = 0.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
 
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)
@@ -85,6 +88,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! append_netCDF_time
         output2D = 1.0
         output3D = 1.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
         time = time + timedelta(days=1)
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)
@@ -93,6 +99,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! Third step and output
         output2D = 2.0
         output3D = 2.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
         time = time + timedelta(days=1)
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)

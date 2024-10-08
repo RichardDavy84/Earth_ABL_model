@@ -912,11 +912,18 @@ PROGRAM ABL
   call sit_next%read_input(next_time, "Moorings")
   call snt_next%read_input(next_time, "Moorings")
 
+!$OMP PARALLEL DEFAULT (SHARED) &
+!$OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
+!$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
+!$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
+!$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
+!$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, time, ha, merge_cnt, do_merge_columns)
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
 
+!$OMP MASTER
       ! Load ERA5 data every hour
       if (repeat_forcing.eq.-1) then
           ! ERA_time remains as t0
@@ -929,8 +936,6 @@ PROGRAM ABL
           else
               next_time = ERA_time + timedelta(hours=1)
           endif
-          ! print *, "daily repeated forcing: from ",ERA_time%getYear(),ERA_time%getMonth(),ERA_time%getDay(),ERA_time%getHour(),ERA_time%getMinute(),ERA_time%getSecond()
-          !print *, "daily repeated forcing: to ",next_time%getYear(),next_time%getMonth(),next_time%getDay(),next_time%getHour(),next_time%getMinute(),next_time%getSecond()
       else
           ERA_time = time    
           next_time = time + timedelta(hours=1)
@@ -1038,28 +1043,20 @@ PROGRAM ABL
       call u1000_next%read_input(next_time, "ERA")
       call v1000_next%read_input(next_time, "ERA")
 
-!      print *, "going into INTEGATE with this u",u(m,n,:)
-!      print *, "u1 ",u(m,n,1)
+!$OMP END MASTER
+!$OMP BARRIER
 
-!      print *, "starting loop"
       do jm = 1, nmts
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
-        print *, "doing the Integration as jh, jm = ",jh,jm
+        !print *, "doing the Integration as jh, jm = ",jh,jm
 
         if (merge_cnt.eq.merge_ds) then
           do_merge_columns = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
           merge_cnt = 0.
-!          print *, "PROCEEDING WITH MERGING"
         else
           do_merge_columns = 0
         endif
 
-!$OMP PARALLEL DEFAULT (SHARED) &
-!$OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
-!$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
-!$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
-!$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
-!$OMP& PRIVATE(area_conc_ow, area_conc)
 !$OMP DO
         do m = 1, mgr
           do n = 1, ngr
@@ -1406,20 +1403,14 @@ PROGRAM ABL
           enddo
         enddo
 !$OMP END DO
-!$OMP END PARALLEL
 
         time = time + dt;
-        ERA_time = ERA_time  ! + dt;
         merge_cnt = merge_cnt + ds
-        print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-!        print *, "t, t_each_cat",t(1,1,1),t_each_cat(1,1,1,1)
 
-!        print *, "shapes ",ustar(1,1),gflux(1,1,1) 
-
+!$OMP MASTER
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
         mnt_out_ds = mnt_out*60./ds
-!        print *, "mnt_out_ds",mnt_out_ds
         IF(MOD(jm,mnt_out_ds).eq.0) then 
           ! mnt_out to number timesteps HCR
           call srfv_all%append_time(time)
@@ -1509,8 +1500,11 @@ PROGRAM ABL
           endif
 
         ENDIF
+!$OMP END MASTER
+
         ! I am doing this here rather than in the previous loop because otherwise Met_SI* are not output correctly
         if (do_tiling.eq.1) then
+!$OMP DO
           do m = 1, mgr
             do n = 1, ngr
               if (do_merge_columns.eq.1) then
@@ -1539,6 +1533,7 @@ PROGRAM ABL
               endif 
             enddo
           enddo
+!$OMP END DO
         endif
 
 !        print *, "appended et and srfv_all"
@@ -1546,6 +1541,8 @@ PROGRAM ABL
       ! print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
 !      print *, "end do"
       ! surface variable every hr_out _hours_
+
+!$OMP MASTER
       IF(MOD(jh,hr_out).eq.0) then
         call Turb%append_time(time)
         call Turb%append_var("e", e)
@@ -1569,9 +1566,11 @@ PROGRAM ABL
         ! call Met%append_var("q", q)
         ! call Met%append_var("qi", qi)
       ENDIF
+!$OMP END MASTER
 
     enddo
   enddo
+!$OMP END PARALLEL
 
   CONTAINS
 

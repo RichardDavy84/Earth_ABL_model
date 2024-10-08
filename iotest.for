@@ -65,7 +65,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
      1      long_name="test_for_a_2D_case",
      1      standard_name="test for a 2D case",
      1      units = "-")
-        call output_test%add_var("test3D", zdim="z",
+        call output_test%add_var("test3D", zdim="nz",
      1      long_name="test_for_a_3D_case",
      1      standard_name="test for a 3D case",
      1      units = "-")

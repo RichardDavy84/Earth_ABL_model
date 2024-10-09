@@ -917,7 +917,8 @@ PROGRAM ABL
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
-!$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, time, ha, merge_cnt, do_merge_columns)
+!$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
+!$OMP& FIRSTPRIVATE(time, merge_cnt)
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()

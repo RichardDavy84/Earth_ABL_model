@@ -915,13 +915,12 @@ PROGRAM ABL
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
-!$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns, next_time, ERA_time, m, n) &
-!$OMP& FIRSTPRIVATE(time, merge_cnt)
+!$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns, m, n) &
+!$OMP& FIRSTPRIVATE(time, merge_cnt, ERA_time, next_time)
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
-
 !$OMP MASTER
       ! Load ERA5 data every hour
       if (repeat_forcing.eq.-1) then

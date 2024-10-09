@@ -171,13 +171,14 @@ PROGRAM ABL
 !  REAL :: height_hPa
  
   ! Read basic namelist
-  open(unit=10, file='setup_info.nml', status='old')
   namelist /grid_info/ fname, lon_name, lat_name, mask_name 
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds
-  namelist /seaice_info/ ni, n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, init_snt, init_snt_young
+  namelist /seaice_info/ ni, n_surf_cat, do_si_coupling, init_sic, init_sic_young, init_sit, init_sit_young, &
+    init_snt, init_snt_young
   namelist /forcing_info/ repeat_forcing, use_d2m !, n_p_levels, pressure_levels
 
+  open(unit=10, file='setup_info.nml', status='old')
   read(10, nml=grid_info)
   read(10, nml=time_info)
   read(10, nml=merge_info)

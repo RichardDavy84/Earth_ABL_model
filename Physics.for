@@ -42,7 +42,8 @@ c=======================================================================
       IMPLICIT none
       INTEGER i,ni
 c      PARAMETER (ni=11)
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,snow_thick,gflux,dt
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,snow_thick,gflux
+      INTEGER dt
 c---------Internal variables
       REAL a(ni),b(ni),c(ni),r(ni)
       REAL dzeta2,rdif,rhoc,rlam,n,nv,rhoc2,rlam2
@@ -107,7 +108,7 @@ c.........Last grid point
       b(i)=1.
       c(i)=0.
       r(i)=tsoil(ni) ! This should be -2 C as bottom of sea ice
-c      print *, "IN SOILTDM, TSOIL B4",tsoil
+c      print *, "IN SOILTDM, TSOIL(ni) ",tsoil(ni)
 c---------Solving matrix for the solution
 c      print *, "INPUTS "
 c      print *, "a ",a
@@ -116,8 +117,12 @@ c      print *, "c ",c
 c      print *, "r ",r
 c      print *, "tsoil ",tsoil
 c      print *, "ni ",ni
+c       print *, "IN SOILTDM, TSOIL B4",tsoil
 	call strid(a,b,c,r,tsoil,ni)
+c       print *, "IN SOILTDM, TSOIL AF",tsoil
+       tsoil(1) = MIN(tsoil(1),-0.055*5. + 273.15) ! limit to freezing temp of SW (formula in nextsim)
 c      print *, "IN SOILTDM, TSOIL AF",tsoil
+c       print *, "dt in soiltdm has been ",dt
 c
       return
       END
@@ -1410,13 +1415,13 @@ c
       return
       END
 
-C     Last change:  HR   20 Aug 2023
+C     Last change:  HR   27 Feb 2024
 c **********************************************************************
 c                          Subroutine thermoIce0                       *
 c     description: Calculates surface temperature and fluxes based on  *
 c           ice thickness and snow thickness model inputs              *
 c **********************************************************************
-      SUBROUTINE thermoIce0(ds,sic,sit,snt,Qia,dQiadT,Tsurf)
+      SUBROUTINE thermoIce0(dt,Qia,dQiadT,sic,sit,snt,Tsurf)
 c     BELOW: full call required for melt and growth code too
 c      SUBROUTINE thermoIce0(ds,sic,sit,snt,snwfall,Qia,dQiadT,subl,
 c      1  Tbot,Qi,hi,hs,hi_old,del_hi,del_hs_mlt,mlt_hi_top,mlt_hi_bot,
@@ -1430,40 +1435,38 @@ c     del_hs_mlt, mlt_hi_top, mlt_hi_bot, del_hi_s2i, M_tice
 
 c     INPUTS
 ccc      REAL sic, sit, snt, snwfall, Qia, dQiadT, subl, Tbot
-      REAL sic, sit, snt, Qia, dQiadT, Tsurf
-      INTEGER ds
+c      REAL sic, sit, snt, Qia, dQiadT, Tsurf
+      REAL Qia, dQiadT
+      INTEGER dt
+c      REAL dt
 
 c     INPUT/OUTPUT  
-      REAL hi, hs ! ccc , hi_old, del_hi, del_hi_mlt, mlt_hi_top
-ccc      REAL mlt_hi_bot, del_hi_s2i, tice
+      REAL sic, sit, snt, Tsurf
 
 c     FOR CONSTANTS/LOCAL
-      REAL Lf, rhoi, rhos, rhow, mu, si, ki, ks !ccchmin ! put these in a common block??
+      REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
       REAL qi, qs, Tfr_ice, Tbot, tempCtoK
-      REAL Qic ! ccc, Qio, del_hb, del_ht, draft  
+      REAL Qic, Qio, del_hb, del_ht, draft  
       INTEGER flooding, freezingp ! an option in nextsim, default true...
+      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+
+      REAL sst, mld
 
 c     CHECK THE SIGNS OF Q!!!!!!
-c     DOESN'T SEEM TO USE mld INPUT? HAVE REMOVED...
+
+c      print *, "dt in thermoice0", dt
 
 c --- set constants (these should use constants from header files)
 c     !!! NEEDS TO BE SAME AS NEXTSIM NAMELIST (particularly ks which
 c     is a namelist option, not just in constants.hpp
-      Lf = 333.55e3 ! Latent heat of fusion (J/kg)
-      rhoi = 917.   ! Density of ice (kg/m3)
-      rhos = 330.   ! Density of snow (kg/m3)
-      rhow = 1025.  ! Density of ocean water (kg/m3)
       mu = 0.055    ! Proportionality cnst. between salinity and freezing temp of sea water (C)
       si = 5.       ! sea ice salinity (g/kg)
       ki = 2.0334   ! heat conductivity of ice (W K^-1 m^-1)
       ks = 0.3096   ! snow conductivity (W K^-1 m^-1) - check units 
-ccc      hmin = 0.01   ! minimum ice thickness allowed (m)
-ccc      flooding = 1  ! this should maybe an input! True or false...
       freezingp = 0 ! in nextsim, we have LINEAR or UNESCO. Let's say (1) and (2)
       tempCtoK = 273.15 ! convert temperature from Celcius to Kelvin
 
-      qi = Lf*rhoi
-      qs = Lf*rhos
       Tfr_ice = -mu*si + tempCtoK ! freezing temp of ice, in KELVIN      
 
       if ( freezingp == 0 ) then
@@ -1479,73 +1482,238 @@ ccc          Tbot = (-0.0575 + 1.710523e-3*SQRT(sss)-2.154996e-4*sss)*sss !we do
 ccc          hi_old = 0.
           hs = 0.
           Tsurf = Tfr_ice
-ccc          del_hi = 0.
       else
 c ------- 1) calculate slab thickness
           hi = sit/sic
 ccc          hi_old = hi
           hs = snt/sic
+c          print *, "hi, hs 1",hi,hs
 
 c ------- 2) calculate Tsurf and conductive flux through ice
           Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki)
 c          Tsurf = Tsurf + 0.001
+c          print *, "HH1",Tbot, Tsurf, hs+hs*hi/ki
+c          print *, "HH2",Qic, Qia, dQiadT
+c          print *, "b4 T,flux",Tsurf,(Qic-Qia)/(ks/(hs+ks*hi/ki)+dQiadT)
           Tsurf = Tsurf + (Qic - Qia)/(ks/(hs+ks*hi/ki) + dQiadT)
+c          print *, "Tsurf components ",Qic, Qia,ks/(hs+ks*hi/ki)+dQiadT
+c          print *, "Tsurf wants to be ",Tsurf
 c         Limit Tsurf to the freezing point of snow or ice
           if ( hs > 0. ) then
               Tsurf = MIN(0. + tempCtoK, Tsurf)
           else
               Tsurf = MIN(Tfr_ice, Tsurf)
           endif
-
-cccc ------- 3) Melt and growth (do not implement initially)
-ccc          
-cccc         Top melt 
-cccc         snow and sublimation
-ccc          del_hs_mlt = MIN(Qia-Qic,0.)*ds/qs
-ccc          hs = hs + del_hi_mlt - subl*ds/rhos
-cccc         use energy left over after snow melts to melt the ice
-ccc          del_ht = MIN(hs, 0.)*qs/qi
-cccc         can't have negative hs
-ccc          hs = MAX(0., hs)
-cccc         snowfall in kg/m2/s
-ccc          hs = hs + snwfall/rhos*ds
-ccc
-cccc         Bottom melt/growth
-ccc          del_hb = (Qic - Qio)*ds/qi
-ccc    
-cccc         Combine top and bottom
-ccc          del_hi = del_ht + del_hb
-ccc          hi = hi + del_hi
-ccc          mlt_hi_top = MIN(del_ht,0.)
-ccc          mlt_hi_bot = MIN(del_hb,0.)
-ccc
-cccc         Snow to ice conversion
-ccc          draft = (hi*rhoi + hs*rhos)/rhow
-cccc         In nextsim, there is an option for snow flooding. Need to if still an option here!          
-ccc          if ( flooding == 1 & draft > hi ) then ! default flooding is true
-cccc             Keep track of ice formed by snow conversion
-ccc              del_hi_s2i = del_hi_s2i + draft - hi
-cccc             Subtract the mass of snow converted to ice from hs_new                        
-ccc              hs = hs - (draft - hi)*rhoi/rhos
-ccc              hi = draft
-ccc
-ccc         Make sure hi_new is not too small
-ccc          if ( hi < hmin ) then
-ccc              if (del_hi < 0. ) then
-ccc                  mlt_hi_top = mlt_hi_top*(-hi_old/del_hi)
-ccc                  mlt_hi_bot = mlt_hi_bot*(-hi_old/del_hi)
-ccc              endif
-ccc              del_hi_s2i = 0.
-ccc
-ccc              del_hi = -hi_old
-ccc              Qio = Qio + hi*qi/ds + hs*qs/ds
-ccc
-ccc              hi = 0.
-ccc              hs = 0.
-ccc              Tsurf = Tfr_ice
-ccc          endif
+          Tsurf = MAX(Tsurf, 200.) ! Extra check for initial adjustments!
 
       endif
 
       return
       END
+
+C     Last change:  HR   27 Feb 2024
+c **********************************************************************
+c                          Subroutine thermoIce0                       *
+c     description: Calculates surface temperature and fluxes based on  *
+c           ice thickness and snow thickness model inputs              *
+c **********************************************************************
+      SUBROUTINE meltgrowth(dt,Qia,dQiadT,e0,sic,sit,snt,Tsurf)
+c     BELOW: full call required for melt and growth code too
+c      SUBROUTINE thermoIce0(ds,sic,sit,snt,snwfall,Qia,dQiadT,subl,
+c      1  Tbot,Qi,hi,hs,hi_old,del_hi,del_hs_mlt,mlt_hi_top,mlt_hi_bot,
+c      2  del_hi_s2i,Tsurf)
+c     INPUTS (direct from nextsim): ddt, M_conc, M_thick, M_snow_thick, mld,
+c     tmp_snowfall, Qia, dQiadT, subl, tfrw
+c     INPUTS/OUTPUTS (direct from nextsim): Qi, hi, hs, hi_old, del_hi,
+c     del_hs_mlt, mlt_hi_top, mlt_hi_bot, del_hi_s2i, M_tice
+     
+      IMPLICIT none
+
+c     INPUTS
+ccc      REAL sic, sit, snt, snwfall, Qia, dQiadT, subl, Tbot
+c      REAL sic, sit, snt, Qia, dQiadT, Tsurf
+      REAL Qia, dQiadT, e0
+      INTEGER dt
+c      REAL dt
+
+c     INPUT/OUTPUT  
+      REAL sic, sit, snt, Tsurf
+
+c     FOR CONSTANTS/LOCAL
+      REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
+      REAL qi, qs, Tfr_ice, Tbot, tempCtoK
+      REAL Qic, Qio, del_hb, del_ht, draft  
+      INTEGER flooding, freezingp ! an option in nextsim, default true...
+      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+
+      REAL sst, mld
+
+c      print *, "dt in thermoice0", dt
+
+c --- set constants (these should use constants from header files)
+c     !!! NEEDS TO BE SAME AS NEXTSIM NAMELIST (particularly ks which
+c     is a namelist option, not just in constants.hpp
+      Lf = 333550.  ! Latent heat of fusion (J/kg)
+      Lv0 = 2500000.! Latent heat of evaporation at 0degC [J/kg] 
+      rhoi = 917.   ! Density of ice (kg/m3)
+      rhos = 330.   ! Density of snow (kg/m3)
+      rhow = 1025.  ! Density of ocean water (kg/m3)
+      mu = 0.055    ! Proportionality cnst. between salinity and freezing temp of sea water (C)
+      si = 5.       ! sea ice salinity (g/kg)
+      ki = 2.0334   ! heat conductivity of ice (W K^-1 m^-1)
+      ks = 0.3096   ! snow conductivity (W K^-1 m^-1) - check units 
+      hmin = 0.01   ! minimum ice thickness allowed (m)
+      flooding = 0  ! this should maybe an input! True or false...
+      freezingp = 0 ! in nextsim, we have LINEAR or UNESCO. Let's say (1) and (2)
+      tempCtoK = 273.15 ! convert temperature from Celcius to Kelvin
+      cpw = 4186.84 ! specific heat of seawater [J/K/kg]
+
+      qi = Lf*rhoi
+      qs = Lf*rhos
+      Tfr_ice = -mu*si + tempCtoK ! freezing temp of ice, in KELVIN      
+
+      if ( freezingp == 0 ) then
+          Tbot = -2. + tempCtoK ! quick fix for now! Value used in Semtner 1976 - in KELVIN
+ccc      if ( freezingp == 1 ) then
+ccc          Tbot = -mu*sss ! requires sea surface salinity
+ccc      elseif (freezingp == 2 ) then
+ccc          Tbot = (-0.0575 + 1.710523e-3*SQRT(sss)-2.154996e-4*sss)*sss !we do not have sss input
+      endif
+
+c     Extra constants FOR NOW
+      sst = Tbot + 0.001 
+      mld = 10.
+
+      if (sit == 0) then ! there is no ice
+          hi = 0.
+ccc          hi_old = 0.
+          hs = 0.
+          Tsurf = Tfr_ice
+ccc          del_hi = 0.
+      else
+c ------- 1) calculate slab thickness
+c          print *, "si inputs",sit,sic,snt
+          hi = sit/sic
+ccc          hi_old = hi
+          hs = snt/sic
+
+c ------- 2) calculate Tsurf and conductive flux through ice
+          Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki) ! does it matter that
+c          this is computed with the new Tsurf, not the old???
+c  NOTE: Tsurf is now an input to this!
+
+c ------- 3) Melt and growth (do not implement initially)
+          
+c         Top melt 
+c         snow and sublimation
+          
+          Lsub = Lf + Lv0 - 240. - 290.*Tsurf - 4*Tsurf*Tsurf ! Latent heat of sublimation
+          subl = MAX(0., e0/Lsub) ! Check that this is the correct latent heat flux!
+          del_hs_mlt = MIN(Qia-Qic,0.)*dt/qs
+c          print *, "change hs ",hs," is ",del_hi_mlt," - ",subl*dt/rhos
+          hs = hs + del_hi_mlt - subl*dt/rhos
+c         use energy left over after snow melts to melt the ice
+          del_ht = MIN(hs, 0.)*qs/qi
+c         can't have negative hs
+          hs = MAX(0., hs)
+c         snowfall in kg/m2/s
+cccc      !!! IMPORTANT: how do we include snowfall???  HCR
+
+c         Bottom melt/growth
+          Qio = 2. ! Einar Olason, personal comms, 27-02-2024 (sst-Tbot)*rhow*cpw*mld/dt ! Ice-ocean heat flux
+          del_hb = (Qic - Qio)*dt/qi
+c          print *, "del_hb = (",Qic," - ",Qio,")*",dt,"/",qi 
+
+c         Combine top and bottom
+          del_hi = del_ht + del_hb
+c          print *, "TESThia",hi,del_ht,del_hb,del_hi
+          hi = (1000.*hi + 1000.*del_hi)/1000.
+c          print *, "TESThib",hi,del_ht,del_hb,del_hi
+c          print *, "TESThic",hi*1000. - 2000.
+          mlt_hi_top = MIN(del_ht,0.)
+          mlt_hi_bot = MIN(del_hb,0.)
+
+c          print *, "hi here is ",hi,del_hi
+c         Snow to ice conversion
+          draft = (hi*rhoi + hs*rhos)/rhow
+c          print *, "draft is",draft,hi*rhoi,hs*rhos,rhow
+c         In nextsim, there is an option for snow flooding. Need to if still an option here!          
+          if ( flooding == 1) then ! default flooding is true
+              if (draft > hi) then
+c                 Keep track of ice formed by snow conversion
+                  del_hi_s2i = del_hi_s2i + draft - hi
+c                 Subtract the mass of snow converted to ice from hs_new                        
+                  hs = hs - (draft - hi)*rhoi/rhos
+                  hi = draft
+              endif
+          endif
+c          print *, "hi, hs 4",hi,hs,del_hb,draft
+
+c         Make sure hi_new is not too small
+          if ( hi < hmin ) then
+              if (del_hi < 0. ) then
+                  mlt_hi_top = mlt_hi_top*(-hi_old/del_hi)
+                  mlt_hi_bot = mlt_hi_bot*(-hi_old/del_hi)
+              endif
+              del_hi_s2i = 0.
+
+              del_hi = -hi_old
+              Qio = Qio + hi*qi/dt + hs*qs/dt
+
+              hi = 0.
+              hs = 0.
+              Tsurf = Tfr_ice
+          endif
+c          print *, "old sit and snt: ",sit,snt,del_hi
+c          print *, "old new diff ", sit - hi*sic 
+c          print *, "sit old + flux ", sit + del_hi*sic
+c          print *, "PHYS new sit and snt old: ",sit,snt,del_hi
+c          print *, "TESTa",sit,hi,sic
+          sit = hi*sic 
+c          print *, "TESTb",sit,hi,sic
+c          sic: NOT MODIFIED HERE - for now, we ignore lateral growth
+          snt = hs*sic
+c          print *, "PHYS new sit and snt: ",sit,snt
+      endif
+
+      return
+      END
+
+c **********************************************************************
+c                       Subroutine SpecHum_from_d2m                    *
+c     description: Calculates specific humidity in atmosphere (q2m)    *
+c                    based on inputs from d2m and mslp                 *
+c     ## NOT IN USE - SOMETHING WRONG WITH OUTPUT - UNITS?             *
+c **********************************************************************
+      SUBROUTINE SpecHum_from_d2m(d2m_in, mslp_in, q2m_out)
+c     Inputs: d2m and mslp from forcing
+c     Outputs: specific humidity (q2m) for use in ABL
+      
+      IMPLICIT none
+ 
+      REAL A_h, B_h, C_h, a_sh, b_sh, c_sh, d_sh, alpha_h, beta_h
+      REAL sl_h, tp_h, f_h, est_h
+      REAL d2m_in, mslp_in, q2m_out
+
+         
+      A_h=7.2e-4
+      B_h=3.20e-6
+      C_h=5.9e-10
+      a_sh=6.1121e2
+      b_sh=18.729
+      c_sh=257.87
+      d_sh=227.3
+      alpha_h=0.62197
+      beta_h=0.37803
+      sl_h=0
+
+      tp_h=d2m_in
+
+      f_h=1.+A_h+mslp_in*1e-2*(B_h+C_h*tp_h*tp_h)
+      est_h=a_sh*exp((b_sh-tp_h/d_sh)*tp_h/(tp_h+c_sh))*(1-5.37e-4*sl_h)
+      q2m_out = alpha_h*f_h*est_h/(mslp_in - beta_h*f_h*est_h)
+
+      return
+      END
+

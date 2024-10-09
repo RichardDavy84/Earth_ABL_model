@@ -4,7 +4,8 @@ module physics
   REAL eta
 
   ! The /consta/ common block (there should be a description of what it contains)
-  REAL alpha,betag,ds,fc,grav,rl0,tg,ug,vg,vk,zero
+  REAL alpha,betag,fc,grav,rl0,tg,ug,vg,vk,zero
+  INTEGER ds
 
   ! The /constb/ common block (there should be a description of what it contains)
   REAL betam,betah,gammam,gammah,pr

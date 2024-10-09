@@ -212,12 +212,29 @@ double precision function netCDF_time(self, time_in) result(time_out)
       enddo
     enddo
 
+    if (filename_st == "Moorings") then
+      do i = 1, size(elon2,1)
+        do j = 1, size(elon2,2)
+          if ( elon2(i,j) < 0. ) then
+            elon2(i,j) = elon2(i,j)+360.
+          else
+            elon2(i,j) = elon2(i,j)
+          endif
+        enddo
+      enddo
+    endif
+
+
     ! Calculate weights:
     if (filename_st == "ERA") then
       call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
     elseif (filename_st == "Moorings") then
       call calc_weights_2Dll(self, elon2, elat2, lon_fx, lat) !this will be different with 2d lat lon 
     endif
+    !print *, "elon2 is ",elon2
+    !print *, "elat2 is ",elat2
+    !print *, "lon_fx is ",lon_fx
+    !print *, "lat is ",lat
 
     ! TODO: Add 3D here
     ! Allocate data array
@@ -252,40 +269,41 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Get file name
     fname = self%get_filename(time, filename_st)
+    print *, "filename is ",fname
 
     ! Deduce the time slice
-    t0 = datetime(time%getYear(), 01, 01)
+    if (filename_st == "ERA") then
+        t0 = datetime(time%getYear(), 01, 01) ! it's a yearly file
+    elseif (filename_st == "Moorings") then
+        t0 = datetime(time%getYear(), time%getMonth(), 01) ! it's a yearly file
+    endif
     dt = time - t0
     time_slice = nint(dt%total_seconds()/3600.) + 1
 
     ! Get size of input data and allocate
     call nc_dims(fname, self%vname, dimnames, dimlens)
-    allocate(data_ll(dimlens(1)+1, dimlens(2)))
-!    print *, "dimensions of input data ",dimlens
 
     ! Read from file
-    ! print *, "about to read ",fname
     if (filename_st == "ERA") then
-!      print *, "ncread with ERA"
+      allocate(data_ll(dimlens(1)+1, dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
-!      print *, "ncread with ERA done"
+      ! Fix to get periodic boundary
+      data_ll(dimlens(1)+1,:) = data_ll(1,:)
     elseif (filename_st == "Moorings") then
-!      print *, "ncread with Moorings"
+      print *, "size of Mooring ",dimlens(1),dimlens(2),dimlens(3)
+      print *, "looking for time slice ",time_slice
+      allocate(data_ll(dimlens(1), dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
-!      print *, "ncread with Moorings done"
+      ! allocate(data_ll(dimlens(2)+1, dimlens(3)))
+      ! call nc_read(fname, self%vname, data_ll(1:dimlens(2),1:dimlens(3)), &
+      !   start=[time_slice, 1, 1], count=[1, dimlens(2), dimlens(3)])
     endif
-    ! print *, "data_ll ",data_ll(1403,40)
-
-    ! Fix to get periodic boundary
-    data_ll(dimlens(1)+1,:) = data_ll(1,:)
 
     ! TODO: Add 3D here
     ! Interpolate to grid
     call interp2D(self, data_ll, filename_st)
-    ! print *, "after interp2D, values are "
-    ! print *, self%data2D
 
   end subroutine read_input
 
@@ -309,7 +327,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! TODO: Add 3D here
     data = self%data2D(i,j)
-    ! print *, "got point, pointis ",self%data2D(i,j)
 
   end function get_point
 
@@ -354,8 +371,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     if ( filename_st == "ERA" ) then
 
-!        print *, "start ERA fname ",fname
-
         ! Replace ${var} with self%vname
         i = index(fname, "${var}")
         fname = fname(1:i-1)//trim(self%vname)//fname(i+6:len(fname))
@@ -363,18 +378,14 @@ double precision function netCDF_time(self, time_in) result(time_out)
         ! Replace ${dir} with self%dirname
         i = index(fname, "${dir}")
         fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
-!        print *, "intermediate ERA fname 2 ",fname
   
     elseif ( filename_st == "Moorings" ) then
 
         ! Replace ${dir} with self%dirname
         i = index(fname, "${dir}")
         fname = fname(1:i-1)//trim(self%dirname)//fname(i+6:len(fname))
-!        print *, "intermediate Moorings fname 2 ",fname
 
     endif
-
-!    print *, "filename ",fname
 
     return
 
@@ -441,23 +452,13 @@ double precision function netCDF_time(self, time_in) result(time_out)
     allocate( self%b_lon, self%a_lat, self%b_lat, mold=self%a_lon )
     allocate( self%r, self%s, self%r2, self%s2, mold=lon_out )
 
-!    print *, "starting loop of calc_weights_2dll"
-
     do i = 1, size(lon_out,1)
-!      print *, "i count ",i
       do j = 1, size(lon_out,2)
-!          print *, "j count ",j
 
-          ! hard-coded to compile! BUT NUMBERS ARE WRONG
-          ! a_lon is the lower corner of the X nextsim dimension (L-R in ncview,
-          ! len 528 in NANUK). a_lat is the lower corner of the Y nextsim
-          ! dimension (down-up in ncview, len 603 in NANUK).
-          ! grid is very irregular so cannot rely on normal square assumptions
+          ! grid is very irregular so cannot rely on normal square assumptions... so check this!
           mindst = 10000000.
           do i_in = 1, size(lon_in,1)-1
-            ! print *, "i_in count ",i_in
             do j_in = 1, size(lon_in,2)-1
-              ! print *, "j_in count ",j_in
 
               ! First do a quick check that latitude and longitude are nearby
               ! (within 1 degree)
@@ -474,13 +475,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
                 
               if (continue_now == 1) then
 
-!                print *,"proceeding",lat_in(i_in,j_in),lon_in(i_in,j_in)
-!                print *, lat_out(i,j),lon_out(i,j)
-!               call hvs(self, 80.,81.,150.,151.,dst1)                
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lat_in(i_in,j_in),dst1)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lat_in(i_in+1,j_in),dst2)
-                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lat_in(i_in,j_in+1),dst3)
-                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lat_in(i_in+1,j_in+1),dst4)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in),lon_out(i,j),lon_in(i_in,j_in),dst1)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in),lon_out(i,j),lon_in(i_in+1,j_in),dst2)
+                call hvs(self,lat_out(i,j),lat_in(i_in,j_in+1),lon_out(i,j),lon_in(i_in,j_in+1),dst3)
+                call hvs(self,lat_out(i,j),lat_in(i_in+1,j_in+1),lon_out(i,j),lon_in(i_in+1,j_in+1),dst4)
 
                 thismindst = MIN(dst1,dst2,dst3,dst4)
                 if (thismindst.lt.mindst) then
@@ -499,17 +497,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
             enddo  
           enddo
 
-!          print *, "these were final values"
-!          print *, self%a_lon(i,j),self%b_lon(i,j),self%a_lat(i,j),self%b_lat(i,j) 
-!          print *, self%r(i,j),self%r2(i,j),self%s(i,j),self%s2(i,j) 
-  
-
-          ! self%a_lon(i,j) = 200
-          ! self%b_lon(i,j) = 201
-          ! self%a_lat(i,j) = 500
-          ! self%b_lat(i,j) = 501
-          ! self%r(i,j) = 0.25
-          ! self%s(i,j) = 0.25
+          !print *, "found ",i,j,lon_out(i,j),lat_out(i,j)
+          !print *, "found2 ",self%a_lon(i,j),self%a_lat(i,j)
+          !print *, "found2b ",lon_in(self%a_lon(i,j),self%a_lat(i,j)),lat_in(self%a_lon(i,j),self%a_lat(i,j))
+          !print *, "found3 ",dst1,dst2,dst3,dst4,mindst
 
       enddo
     enddo
@@ -534,8 +525,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! use Haversine formula to get minimum distances and weights
     phi1 = lat_1*pi/180.
     phi2 = lat_2*pi/180.
-    delta_phi = (lat_2-lat_1)*pi/180.
-    delta_lambda = (lon_2-lon_1)*pi/180.
+    delta_phi = abs(lat_2-lat_1)*pi/180.
+    delta_lambda = abs(lon_2-lon_1)*pi/180.
 
     a = SIN(delta_phi/2.)**2 + COS(phi1)*COS(phi2)*SIN(delta_lambda/2.)**2
     c = 2*atan2(SQRT(a), SQRT(1-a))
@@ -584,6 +575,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
           scale_2 = self%r2(i,j)/scale_sum
           scale_3 = self%s(i,j)/scale_sum
           scale_4 = self%s2(i,j)/scale_sum
+          !print *, "datad", data_in_1,data_in_2,data_in_3,data_in_4
+          !print *, "datas", scale_1,scale_2,scale_3,scale_4,scale_sum
+          !print *, "datat ",data_in(283,501)
+          !print *, "datat ",data_in(501,283)
 !          print *, "sum of Moorings scales ",scale_1+scale_2+scale_3+scale_4
         endif
 
@@ -724,7 +719,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
 ! Routine to initialise a netCDF file
 !   - We write the x, y, and time dimensions, mask, and lat/lon coords
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_netCDF(self, fname, mgr, ngr, mask, lon, lat, zm, zt, zgnd, nz)
+  subroutine init_netCDF(self, fname, mgr, ngr, mask, lon, lat, zm, zt, zp, zgnd, nz)
 
     implicit none
 
@@ -733,7 +728,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
     integer, intent(in) :: mgr, ngr
     integer, dimension(:,:), intent(in) :: mask
     real, dimension(:,:), intent(in) :: lon, lat
-    real, dimension(:), intent(in), optional :: zm, zt, zgnd
+    real, dimension(:), intent(in), optional :: zm, zt, zp, zgnd
     integer, intent(in), optional :: nz
 
     ! Working variables
@@ -757,11 +752,15 @@ double precision function netCDF_time(self, time_in) result(time_out)
     if ( present(zt) ) then
       call nc_write_dim(self%fname, "zt", zt, units="m")
     endif
+    if ( present(zp) ) then
+      call nc_write_dim(self%fname, "zp", zp, units="hPa")
+    endif
     if ( present(zgnd) ) then
       call nc_write_dim(self%fname, "zgnd", zgnd, units="m")
     endif
     if ( present(nz) ) then
-      call nc_write_dim(self%fname, "z", 1, nx=nz)
+      call nc_write_dim(self%fname, "nz", 1, nx=nz)
+      ! call nc_write_dim(self%fname, "z", 1, nx=nz)
     endif
 
     time_string = trim(self%time_unit)//" since "//self%reference_time

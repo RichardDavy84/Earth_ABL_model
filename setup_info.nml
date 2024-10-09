@@ -2,7 +2,8 @@
   fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc",
   lon_name = "plon",
   lat_name = "plat",
-  mask_name = "mask"
+  mask_name = "mask",
+  land_value = 0     ! Some masks give land as 1, and some as 0
 /
 
 &time_info
@@ -19,20 +20,47 @@
 
 &merge_info
   do_tiling = 1,
-  merge_seconds = -1 ! Set to -1 if never merging
+  merge_seconds = -1, ! Set to -1 if never merging
+  n_surf_cat = 3, ! if 1, no tiling. If > 1, the last category is open water
 /
 
 &seaice_info
-  n_surf_cat = 3, ! if 1, no tiling. If > 1, the last category is open water
-  do_si_coupling = 0, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. ICs below!
+  ni = 10, ! This is the number of layers in the ice
+  do_si_coupling = -1, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. If -1, no response of sea ice to atmosphere. ICs below!
   ! This functionality needs to be adapted further! 
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
-  init_sic = 0.90,
-  init_sic_young = 0.05,
-  init_sit = 2.,
-  init_sit_young = 0.2,
-  init_snt = 0.2,
-  init_snt_young = 0.02
+  do_si_ics = 1., ! =1 means use constants in constants_info; =2 means from file
+  si_ics_ftype = "Moorings" ! Moorings or ERA
+  !! Pack ice situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.2, 0.02)
+  ! init_sic = 0.90,
+  ! init_sic_young = 0.05,
+  ! init_sit = 1.8,
+  ! init_sit_young = 0.01,
+  ! init_snt = 0.18,
+  ! init_snt_young = 0.001
+  !! MIZ situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.0, 0.0)
+  ! init_sic = 0.50,
+  ! init_sic_young = 0.0,
+  ! init_sit = 1.,
+  ! init_sit_young = 0.0,
+  ! init_snt = 0.2,
+  ! init_snt_young = 0.0
 /
+
+&forcing_info
+  repeat_forcing = -1, ! this repeats (-1) the first timestep or (1) the first day of the atmospheric forcing for the whole simulation, or (0) just uses forcing determined by time_info
+  use_d2m = 0,        ! this decides whether to use specific humidity directly from q2m, or to compute from d2m (formula from nextsim). ! Always set to 0 - function not working so now reads q2m after using build_q2m_from_d2m_slp.py
+  nudge_800 = 1,
+  ! n_p_levels = 12,
+  ! pressure_levels = 700., 750., 775., 800., 825., 850., 875., 900., 925., 950., 975., 1000.
+/
+
+&constants_info
+  const_z0 = 0.001,0.001,0.001,
+  const_sic_init = 0.9, 0.05, 0.05, 
+  const_sit_init = 2.0, 0.2, 0.,
+  const_snt_init = 0.2, 0.02, 0.
+/
+
 !  

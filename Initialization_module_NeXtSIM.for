@@ -147,7 +147,8 @@ c      ds_in = ds_in
       hoursec=daysec/nhrs
       fc=2.*angv*SIN(rlat*rpi)
 
-      tg=theta(nj)
+      ! Commented out by Heather - doesn't seem to be used?
+      ! tg=theta(nj)
 
 c---------Constants used in similarity functions
         betam =5.0                   ! Others : 6.00      4.7      5.0
@@ -201,6 +202,7 @@ c---------Calculating initial profiles
         call compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni)
 c          dzeta=alog(.2/z0+1.)/(ni-1.)
         call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),ct_ice,ni)
+        print *, "initialised tsoil ",tsoil
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')

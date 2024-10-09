@@ -75,7 +75,7 @@ PROGRAM ABL
   ! Grid information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   INTEGER :: ngr, mgr, igr, jgr
-  INTEGER, DIMENSION(:,:), ALLOCATABLE :: mask
+  INTEGER, DIMENSION(:,:), ALLOCATABLE :: ocean_index
   REAL, DIMENSION(:,:), ALLOCATABLE :: rlat, rlon
   REAL, DIMENSION(nj) :: zm, zt, dedzm, dedzt
 
@@ -154,7 +154,7 @@ PROGRAM ABL
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
-  INTEGER :: ds
+  INTEGER :: ds, i
   INTEGER :: merge_ds, merge_cnt
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
   REAL :: ha, tint
@@ -204,7 +204,7 @@ PROGRAM ABL
   !lat_name = "plat"
   !mask_name = "mask"
 
-  CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, mask)
+  CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, ocean_index)
 
   print *, "Read ", fname
   print *, "mgr = ", mgr
@@ -442,56 +442,54 @@ PROGRAM ABL
 
   print *, "read_input some f"
  
-  do m = 1, mgr
-    do n = 1, ngr
+  do i = 1, size(ocean_index, 2)
+    m = ocean_index(1,i)
+    n = ocean_index(2,i)
 
-      ! Skip the land points
-      if ( mask(m,n) .eq. 0 ) continue
+!     print *, "initializing: about to call"
+!     print *, "albedo ",albedo(m,n,:)
+!     print *, "u850 from file ",u850_now%get_point(m,n)
+!     print *, "v850 from file ",v850_now%get_point(m,n)
+!     print *, "slon ",slon
+!     print *, "semis ",semis(m,n,:)
+!     print *, "rlat ",rlat(m,n)
+!     print *, "z0 ",z0(m,n,:)
+!     print *, "taur ",taur(m,n)
+!     print *, "p0 ",p0%get_point(m,n)
 
-!      print *, "initializing: about to call"
-!      print *, "albedo ",albedo(m,n,:)
-!      print *, "u850 from file ",u850_now%get_point(m,n)
-!      print *, "v850 from file ",v850_now%get_point(m,n)
-!      print *, "slon ",slon
-!      print *, "semis ",semis(m,n,:)
-!      print *, "rlat ",rlat(m,n)
-!      print *, "z0 ",z0(m,n,:)
-!      print *, "taur ",taur(m,n)
-!      print *, "p0 ",p0%get_point(m,n)
+!     u_in = u850_now%get_point(m,n)
+!     v_in = v850_now%get_point(m,n)
+!     p_in = p0%get_point(m,n)
+!     q_in = q0%get_point(m,n)
+!     t_in = t0%get_point(m,n)
 
-!      u_in = u850_now%get_point(m,n)
-!      v_in = v850_now%get_point(m,n)
-!      p_in = p0%get_point(m,n)
-!      q_in = q0%get_point(m,n)
-!      t_in = t0%get_point(m,n)
+    u_hPa(m,n,12) = u700_now%get_point(m,n)
+    u_hPa(m,n,11) = u750_now%get_point(m,n)
+    u_hPa(m,n,10) = u775_now%get_point(m,n)
+    u_hPa(m,n,9) = u800_now%get_point(m,n)
+    u_hPa(m,n,8) = u825_now%get_point(m,n)
+    u_hPa(m,n,7) = u850_now%get_point(m,n)
+    u_hPa(m,n,6) = u875_now%get_point(m,n)
+    u_hPa(m,n,5) = u900_now%get_point(m,n)
+    u_hPa(m,n,4) = u925_now%get_point(m,n)
+    u_hPa(m,n,3) = u950_now%get_point(m,n)
+    u_hPa(m,n,2) = u975_now%get_point(m,n)
+    u_hPa(m,n,1) = u1000_now%get_point(m,n)
 
-       u_hPa(m,n,12) = u700_now%get_point(m,n)
-       u_hPa(m,n,11) = u750_now%get_point(m,n)
-       u_hPa(m,n,10) = u775_now%get_point(m,n)
-       u_hPa(m,n,9) = u800_now%get_point(m,n)
-       u_hPa(m,n,8) = u825_now%get_point(m,n)
-       u_hPa(m,n,7) = u850_now%get_point(m,n)
-       u_hPa(m,n,6) = u875_now%get_point(m,n)
-       u_hPa(m,n,5) = u900_now%get_point(m,n)
-       u_hPa(m,n,4) = u925_now%get_point(m,n)
-       u_hPa(m,n,3) = u950_now%get_point(m,n)
-       u_hPa(m,n,2) = u975_now%get_point(m,n)
-       u_hPa(m,n,1) = u1000_now%get_point(m,n)
+    v_hPa(m,n,12) = v700_now%get_point(m,n)
+    v_hPa(m,n,11) = v750_now%get_point(m,n)
+    v_hPa(m,n,10) = v775_now%get_point(m,n)
+    v_hPa(m,n,9) = v800_now%get_point(m,n)
+    v_hPa(m,n,8) = v825_now%get_point(m,n)
+    v_hPa(m,n,7) = v850_now%get_point(m,n)
+    v_hPa(m,n,6) = v875_now%get_point(m,n)
+    v_hPa(m,n,5) = v900_now%get_point(m,n)
+    v_hPa(m,n,4) = v925_now%get_point(m,n)
+    v_hPa(m,n,3) = v950_now%get_point(m,n)
+    v_hPa(m,n,2) = v975_now%get_point(m,n)
+    v_hPa(m,n,1) = v1000_now%get_point(m,n)
 
-       v_hPa(m,n,12) = v700_now%get_point(m,n)
-       v_hPa(m,n,11) = v750_now%get_point(m,n)
-       v_hPa(m,n,10) = v775_now%get_point(m,n)
-       v_hPa(m,n,9) = v800_now%get_point(m,n)
-       v_hPa(m,n,8) = v825_now%get_point(m,n)
-       v_hPa(m,n,7) = v850_now%get_point(m,n)
-       v_hPa(m,n,6) = v875_now%get_point(m,n)
-       v_hPa(m,n,5) = v900_now%get_point(m,n)
-       v_hPa(m,n,4) = v925_now%get_point(m,n)
-       v_hPa(m,n,3) = v950_now%get_point(m,n)
-       v_hPa(m,n,2) = v975_now%get_point(m,n)
-       v_hPa(m,n,1) = v1000_now%get_point(m,n)
-
-     ! Now update u and v initial conditions to be profiles from ERA5
+    ! Now update u and v initial conditions to be profiles from ERA5
 !      do np=1,nplev
 !!      1) if above or below boundary layer, force differently
 !!      2) if hPa var is greater than  the highest pressure in the model,do not nudge
@@ -509,82 +507,82 @@ PROGRAM ABL
 !      print *, "about to INITIALIZE!!!"
 
 
-      print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
-      ! Should this albedo ultimately be affected by the snow?
-      print *, "future consideration is to include snow albedo"
-      ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
-      if (ncat.gt.1) then
-        do n_si = 1,ncat-1
-          albedo(m,n,n_si) = 0.63 ! Albedo for thick ice (nextsim default)
-          semis(m,n,n_si) = 0.996 ! Emissivity of ice, as in nextsim
-        enddo
-        albedo(m,n,ncat) = 0.07 ! Albedo for ocean (nextsim default)
-        semis(m,n,ncat) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
-      else
-        albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
-        semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
-      endif
+    print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
+    ! Should this albedo ultimately be affected by the snow?
+    print *, "future consideration is to include snow albedo"
+    ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
+    if (ncat.gt.1) then
+      do n_si = 1,ncat-1
+        albedo(m,n,n_si) = 0.63 ! Albedo for thick ice (nextsim default)
+        semis(m,n,n_si) = 0.996 ! Emissivity of ice, as in nextsim
+      enddo
+      albedo(m,n,ncat) = 0.07 ! Albedo for ocean (nextsim default)
+      semis(m,n,ncat) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
+    else
+      albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
+      semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
+    endif
 
 !      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
 
-      !!! Hack for now
-      do n_si = 1,ncat
-        z0(m,n,n_si) = 0.001 ! this is the surface roughness I believe
-      enddo
-      ! Choose some initial sea ice conditions
-      sic(m,n,1) = init_sic !0.50 ! 0.90
-      sit(m,n,1) = init_sit
-      snt(m,n,1) = init_snt
-      if (ncat.gt.1) then 
-          sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
-          sit(m,n,ncat) = 0.
-          snt(m,n,ncat) = 0.
-          if (ncat.gt.2) then
-              sic(m,n,2) = init_sic_young  
-              sit(m,n,2) = init_sit_young
-              snt(m,n,2) = init_snt_young
-          endif
-      endif
-      !  if (n_si.lt.ncat) then
-      !    sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
-      !    ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
-      !   if (sic(m,n,n_si).gt.0.) then
-      !     snt(m,n,n_si) = 0.2/sic(m,n,n_si) !snt_now%get_point(m,n)
-      !     sit(m,n,n_si) = 2./sic(m,n,n_si) !sit_now%get_point(m,n)
-      !   else
-      !     snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
-      !      sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
-      !    endif
-      !  else
-      !    snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
-      !    sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
-      !    sic(m,n,n_si) = 0. !sic_now%get_point(m,n)
-      !  endif
-      !enddo
+    !!! Hack for now
+    do n_si = 1,ncat
+      z0(m,n,n_si) = 0.001 ! this is the surface roughness I believe
+    enddo
+    ! Choose some initial sea ice conditions
+    sic(m,n,1) = init_sic !0.50 ! 0.90
+    sit(m,n,1) = init_sit
+    snt(m,n,1) = init_snt
+    if (ncat.gt.1) then
+        sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
+        sit(m,n,ncat) = 0.
+        snt(m,n,ncat) = 0.
+        if (ncat.gt.2) then
+            sic(m,n,2) = init_sic_young
+            sit(m,n,2) = init_sit_young
+            snt(m,n,2) = init_snt_young
+        endif
+    endif
+    !  if (n_si.lt.ncat) then
+    !    sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
+    !    ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
+    !   if (sic(m,n,n_si).gt.0.) then
+    !     snt(m,n,n_si) = 0.2/sic(m,n,n_si) !snt_now%get_point(m,n)
+    !     sit(m,n,n_si) = 2./sic(m,n,n_si) !sit_now%get_point(m,n)
+    !   else
+    !     snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
+    !      sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
+    !    endif
+    !  else
+    !    snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
+    !    sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
+    !    sic(m,n,n_si) = 0. !sic_now%get_point(m,n)
+    !  endif
+    !enddo
 
 !!    Settings for "soil" code
-      ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
-     
-!      print *, "Check this ice_snow_thick"
-      if (sic(m,n,1).gt.0) then
-          ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))/sic(m,n,1)
-      else
-          ice_snow_thick(m,n,1) = 0.
-      endif
-      if (ncat.gt.3) then
-          print *, "PROBLEM! 3 is the maximum number of categories allowed"
-      elseif (ncat.gt.2) then ! ncat=1: just one thickness. ncat=2: only one SI category     
-          if (sic(m,n,2).gt.0) then
-              ice_snow_thick(m,n,2) = (sit(m,n,2) + snt(m,n,2))/sic(m,n,2)
-          else
-              ice_snow_thick(m,n,2) = 0.
-          endif
-      endif
+    ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
 
-      ! Do some initialising
-      dedzs(m,n,:,:) = 0.
-      tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
-      zsoil(m,n,:,:) = 0.
+!      print *, "Check this ice_snow_thick"
+    if (sic(m,n,1).gt.0) then
+        ice_snow_thick(m,n,1) = (sit(m,n,1) + snt(m,n,1))/sic(m,n,1)
+    else
+        ice_snow_thick(m,n,1) = 0.
+    endif
+    if (ncat.gt.3) then
+        print *, "PROBLEM! 3 is the maximum number of categories allowed"
+    elseif (ncat.gt.2) then ! ncat=1: just one thickness. ncat=2: only one SI category
+        if (sic(m,n,2).gt.0) then
+            ice_snow_thick(m,n,2) = (sit(m,n,2) + snt(m,n,2))/sic(m,n,2)
+        else
+            ice_snow_thick(m,n,2) = 0.
+        endif
+    endif
+
+    ! Do some initialising
+    dedzs(m,n,:,:) = 0.
+    tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
+    zsoil(m,n,:,:) = 0.
 
 !!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
 !      call Initialize_NeXtSIM_ABL( &
@@ -615,37 +613,37 @@ PROGRAM ABL
 !      print *, "soil values: "
 !      print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
 
-      do n_si = 1,ncat
-    !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
-          if (use_d2m.eq.1) then
-              call SpecHum_from_d2m(d0%get_point(m,n), p0%get_point(m,n), q0_val)
-          else
-              q0_val = q0%get_point(m,n)
-          endif
-          call Initialize_NeXtSIM_ABL( &
-            albedo(m,n,n_si),                                                    & ! Internal or from coupler?
-            u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
-            slon,                                                           & ! See above
-            semis(m,n,1),                                                     & ! Internal or from coupler?
-            rlat(m,n),                                                      &
-            z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
-            ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
-            taur(m,n),                                                      & ! Internal variable
-            p0%get_point(m,n), q0_val,                    & ! From file
-            263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
+    do n_si = 1,ncat
+  !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
+        if (use_d2m.eq.1) then
+            call SpecHum_from_d2m(d0%get_point(m,n), p0%get_point(m,n), q0_val)
+        else
+            q0_val = q0%get_point(m,n)
+        endif
+        call Initialize_NeXtSIM_ABL( &
+          albedo(m,n,n_si),                                                    & ! Internal or from coupler?
+          u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
+          slon,                                                           & ! See above
+          semis(m,n,1),                                                     & ! Internal or from coupler?
+          rlat(m,n),                                                      &
+          z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
+          ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
+          taur(m,n),                                                      & ! Internal variable
+          p0%get_point(m,n), q0_val,                    & ! From file
+          263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
 !            p0%get_point(m,n), q0_val, t0%get_point(m,n),                   & ! From file
-            nj,                                                             & ! Number of vertical grid points
-            nv,                                                             & ! Always 6?
-            dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
-            u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si),      & ! prognostics
-            q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),                             & ! prognostics
-            e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si),    & 
-            vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),                            & ! prognostics
-            wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si),  &
-            kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),                           & ! prognostics
-            p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
-            dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
-            dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
+          nj,                                                             & ! Number of vertical grid points
+          nv,                                                             & ! Always 6?
+          dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
+          u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si),      & ! prognostics
+          q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),                             & ! prognostics
+          e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si),    &
+          vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),                            & ! prognostics
+          wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si),  &
+          kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),                           & ! prognostics
+          p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
+          dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
+          dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
 !          print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
 !          print *, "ustar from initialize: ",ustar(m,n)
 !          print *, "soil values: "
@@ -673,8 +671,8 @@ PROGRAM ABL
 !        tld_each_cat(m,n,:,n_si) = tld(m,n,:)
 !        blht_each_cat(m,n,n_si) = blht(m,n)
 !        rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)
-      enddo
- 
+    enddo
+
 !      print *, "T",t(m,n,:)
 
 !!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
@@ -685,9 +683,8 @@ PROGRAM ABL
 !        zsoil(m,n,:,n_si) = zsoil(m,n,:,1)
 !        dzeta(m,n,n_si) = dzeta(m,n,1)
 !      enddo
-      blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
+    blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
 
-    enddo
   enddo
 
 !  u850_init_HR = u850_now%get_point(1,1)
@@ -698,7 +695,7 @@ PROGRAM ABL
 !  print *, "u850 INIT ",u850_init_HR
 
   ! Initialise output files
-  call srfv_all%init('SRFV-ALL.nc', mgr, ngr, mask, rlon, rlat)
+  call srfv_all%init('SRFV-ALL.nc', mgr, ngr, ocean_index, rlon, rlat)
   call srfv_all%add_var("dummy")
   call srfv_all%add_var("E0")
   call srfv_all%add_var("u*")
@@ -713,7 +710,7 @@ PROGRAM ABL
   call srfv_all%add_var("rif_blht")
 !  print *, "Initialised srfv "
 
-  call Turb%init('Turb.nc', mgr, ngr, mask, rlon, rlat, zt=zt)
+  call Turb%init('Turb.nc', mgr, ngr, ocean_index, rlon, rlat, zt=zt)
 !  print *, "adding variables to Turb"
   call Turb%add_var("dummy", "zt")
   call Turb%add_var("e", "zt")
@@ -731,7 +728,7 @@ PROGRAM ABL
 
 !  print *, "we are initialilsing zm in Met.nc as "
 !  print *, zm
-  call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+  call Met%init('Met.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm)
   call Met%add_var("dummy", "zm")
   call Met%add_var("u", "zm")
   call Met%add_var("v", "zm")
@@ -742,7 +739,7 @@ PROGRAM ABL
 !  print *, "Initialised Met"
 
   ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
-  call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+  call Met_SI1%init('Met_SI1.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm)
   call Met_SI1%add_var("dummy", "zm")
   call Met_SI1%add_var("u", "zm")
   call Met_SI1%add_var("v", "zm")
@@ -752,7 +749,7 @@ PROGRAM ABL
   call Met_SI1%add_var("qi", "zm")
 
   if (ncat.gt.1) then
-      call Met_SI2%init('Met_SI2.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+      call Met_SI2%init('Met_SI2.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm)
       call Met_SI2%add_var("dummy", "zm")
       call Met_SI2%add_var("u", "zm")
       call Met_SI2%add_var("v", "zm")
@@ -762,7 +759,7 @@ PROGRAM ABL
       call Met_SI2%add_var("qi", "zm")
     
       if (ncat.gt.2) then
-          call Met_SI3%init('Met_SI3.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+          call Met_SI3%init('Met_SI3.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm)
           call Met_SI3%add_var("dummy", "zm")
           call Met_SI3%add_var("u", "zm")
           call Met_SI3%add_var("v", "zm")
@@ -773,7 +770,7 @@ PROGRAM ABL
       endif
   endif
 
-  call srfv_balance%init('SRFV-BALANCE.nc', mgr, ngr, mask, rlon, rlat)
+  call srfv_balance%init('SRFV-BALANCE.nc', mgr, ngr, ocean_index, rlon, rlat)
   call srfv_balance%add_var("dummy")
   call srfv_balance%add_var("gflux1")
   call srfv_balance%add_var("lw_net1")
@@ -792,7 +789,7 @@ PROGRAM ABL
   call srfv_balance%add_var("e03")
 !  print *, "Initialised srfv balance "
 
-  call ice_layers%init('ice_layers.nc', mgr, ngr, mask, rlon, rlat, nz=ni)
+  call ice_layers%init('ice_layers.nc', mgr, ngr, ocean_index, rlon, rlat, nz=ni)
   call ice_layers%add_var("dummy","nz")
   call ice_layers%add_var("tsoil1","nz")
 !  print *, "here 1"
@@ -814,7 +811,7 @@ PROGRAM ABL
 !  print *, "Initialised"
 !  print *, "now zm is ",zm
   ! Output initial conditions
-  call init_cond%init('INIT_COND.nc', mgr, ngr, mask, rlon, rlat, zm=zm, zt=zt,nz=ni)
+  call init_cond%init('INIT_COND.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm, zt=zt,nz=ni)
 
   call init_cond%add_var("U", "zm")
   call init_cond%add_var("V", "zm")
@@ -864,7 +861,7 @@ PROGRAM ABL
 
 !  print *, "we are initialilsing zm in Met.nc as "
 !  print *, zm
-!  call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
+!  call Met%init('Met.nc', mgr, ngr, ocean_index, rlon, rlat, zm=zm)
 !  call Met%add_var("u", "zm")
 !  call Met%add_var("v", "zm")
 !  call Met%add_var("t", "zm")
@@ -1060,20 +1057,18 @@ PROGRAM ABL
         endif
 
 !$OMP DO
-        do m = 1, mgr
-          do n = 1, ngr
+        do i = 1, size(ocean_index, 2)
+          m = ocean_index(1,i)
+          n = ocean_index(2,i)
 
-            ! Skip the land points
-            if ( mask(m,n) .eq. 0 ) continue
-
-            ! Time integration
-            tint = real(jm-1)/real(nmts)
-            sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
-            sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
-            ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
-            ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
-            mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
-            msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
+          ! Time integration
+          tint = real(jm-1)/real(nmts)
+          sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
+          sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
+          ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
+          ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
+          mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
+          msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
 
 !            if (m.eq.1) then
 !                if (n.eq.1) then
@@ -1104,305 +1099,304 @@ PROGRAM ABL
 !              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !            enddo
 
-            !print *, "get hPa levels"
-            t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
-            if (t700_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,12) = -999.
-            elseif (t700_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,12) = -999.
-            endif
-            t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
-            if (t750_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,11) = -999.
-            elseif (t750_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,11) = -999.
-            endif
-            t_hPa(m,n,10) = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
-            if (t775_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,10) = -999.
-            elseif (t775_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,10) = -999.
-            endif
-            t_hPa(m,n,9) = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
-            if (t800_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,9) = -999.
-            elseif (t800_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,9) = -999.
-            endif
-            t_hPa(m,n,8) = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
-            if (t825_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,8) = -999.
-            elseif (t825_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,8) = -999.
-            endif
-            t_hPa(m,n,7) = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
-            if (t850_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,7) = -999.
-            elseif (t850_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,7) = -999.
-            endif
-            t_hPa(m,n,6) = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
-            if (t875_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,6) = -999.
-            elseif (t875_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,6) = -999.
-            endif
-            t_hPa(m,n,5) = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
-            if (t900_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,5) = -999.
-            elseif (t900_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,5) = -999.
-            endif
-            t_hPa(m,n,4) = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
-            if (t925_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,4) = -999.
-            elseif (t925_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,4) = -999.
-            endif
-            t_hPa(m,n,3) = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
-            if (t950_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,3) = -999.
-            elseif (t950_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,3) = -999.
-            endif
-            t_hPa(m,n,2) = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
-            if (t975_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,2) = -999.
-            elseif (t975_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,2) = -999.
-            endif
-            t_hPa(m,n,1) = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
-            if (t1000_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,1) = -999.
-            elseif (t1000_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,1) = -999.
-            endif
-  
-            u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
-            u_hPa(m,n,11) = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
-            u_hPa(m,n,10) = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
-            u_hPa(m,n,9) = hourint(tint, u800_now%get_point(m,n), u800_next%get_point(m,n))
-            u_hPa(m,n,8) = hourint(tint, u825_now%get_point(m,n), u825_next%get_point(m,n))
-            u_hPa(m,n,7) = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
-            u_hPa(m,n,6) = hourint(tint, u875_now%get_point(m,n), u875_next%get_point(m,n))
-            u_hPa(m,n,5) = hourint(tint, u900_now%get_point(m,n), u900_next%get_point(m,n))
-            u_hPa(m,n,4) = hourint(tint, u925_now%get_point(m,n), u925_next%get_point(m,n))
-            u_hPa(m,n,3) = hourint(tint, u950_now%get_point(m,n), u950_next%get_point(m,n))
-            u_hPa(m,n,2) = hourint(tint, u975_now%get_point(m,n), u975_next%get_point(m,n))
-            u_hPa(m,n,1) = hourint(tint, u1000_now%get_point(m,n), u1000_next%get_point(m,n))
+          !print *, "get hPa levels"
+          t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
+          if (t700_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,12) = -999.
+          elseif (t700_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,12) = -999.
+          endif
+          t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
+          if (t750_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,11) = -999.
+          elseif (t750_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,11) = -999.
+          endif
+          t_hPa(m,n,10) = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
+          if (t775_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,10) = -999.
+          elseif (t775_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,10) = -999.
+          endif
+          t_hPa(m,n,9) = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
+          if (t800_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,9) = -999.
+          elseif (t800_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,9) = -999.
+          endif
+          t_hPa(m,n,8) = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
+          if (t825_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,8) = -999.
+          elseif (t825_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,8) = -999.
+          endif
+          t_hPa(m,n,7) = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
+          if (t850_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,7) = -999.
+          elseif (t850_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,7) = -999.
+          endif
+          t_hPa(m,n,6) = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
+          if (t875_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,6) = -999.
+          elseif (t875_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,6) = -999.
+          endif
+          t_hPa(m,n,5) = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
+          if (t900_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,5) = -999.
+          elseif (t900_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,5) = -999.
+          endif
+          t_hPa(m,n,4) = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
+          if (t925_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,4) = -999.
+          elseif (t925_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,4) = -999.
+          endif
+          t_hPa(m,n,3) = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
+          if (t950_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,3) = -999.
+          elseif (t950_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,3) = -999.
+          endif
+          t_hPa(m,n,2) = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
+          if (t975_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,2) = -999.
+          elseif (t975_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,2) = -999.
+          endif
+          t_hPa(m,n,1) = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
+          if (t1000_now%get_point(m,n).lt.0) then
+            t_hPa(m,n,1) = -999.
+          elseif (t1000_next%get_point(m,n).lt.0) then
+            t_hPa(m,n,1) = -999.
+          endif
 
-            v_hPa(m,n,12) = hourint(tint, v700_now%get_point(m,n), v700_next%get_point(m,n))
-            v_hPa(m,n,11) = hourint(tint, v750_now%get_point(m,n), v750_next%get_point(m,n))
-            v_hPa(m,n,10) = hourint(tint, v775_now%get_point(m,n), v775_next%get_point(m,n))
-            v_hPa(m,n,9) = hourint(tint, v800_now%get_point(m,n), v800_next%get_point(m,n))
-            v_hPa(m,n,8) = hourint(tint, v825_now%get_point(m,n), v825_next%get_point(m,n))
-            v_hPa(m,n,7) = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
-            v_hPa(m,n,6) = hourint(tint, v875_now%get_point(m,n), v875_next%get_point(m,n))
-            v_hPa(m,n,5) = hourint(tint, v900_now%get_point(m,n), v900_next%get_point(m,n))
-            v_hPa(m,n,4) = hourint(tint, v925_now%get_point(m,n), v925_next%get_point(m,n))
-            v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
-            v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
-            v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
+          u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
+          u_hPa(m,n,11) = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
+          u_hPa(m,n,10) = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
+          u_hPa(m,n,9) = hourint(tint, u800_now%get_point(m,n), u800_next%get_point(m,n))
+          u_hPa(m,n,8) = hourint(tint, u825_now%get_point(m,n), u825_next%get_point(m,n))
+          u_hPa(m,n,7) = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
+          u_hPa(m,n,6) = hourint(tint, u875_now%get_point(m,n), u875_next%get_point(m,n))
+          u_hPa(m,n,5) = hourint(tint, u900_now%get_point(m,n), u900_next%get_point(m,n))
+          u_hPa(m,n,4) = hourint(tint, u925_now%get_point(m,n), u925_next%get_point(m,n))
+          u_hPa(m,n,3) = hourint(tint, u950_now%get_point(m,n), u950_next%get_point(m,n))
+          u_hPa(m,n,2) = hourint(tint, u975_now%get_point(m,n), u975_next%get_point(m,n))
+          u_hPa(m,n,1) = hourint(tint, u1000_now%get_point(m,n), u1000_next%get_point(m,n))
 
-            do n_si = 1, ncat
+          v_hPa(m,n,12) = hourint(tint, v700_now%get_point(m,n), v700_next%get_point(m,n))
+          v_hPa(m,n,11) = hourint(tint, v750_now%get_point(m,n), v750_next%get_point(m,n))
+          v_hPa(m,n,10) = hourint(tint, v775_now%get_point(m,n), v775_next%get_point(m,n))
+          v_hPa(m,n,9) = hourint(tint, v800_now%get_point(m,n), v800_next%get_point(m,n))
+          v_hPa(m,n,8) = hourint(tint, v825_now%get_point(m,n), v825_next%get_point(m,n))
+          v_hPa(m,n,7) = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
+          v_hPa(m,n,6) = hourint(tint, v875_now%get_point(m,n), v875_next%get_point(m,n))
+          v_hPa(m,n,5) = hourint(tint, v900_now%get_point(m,n), v900_next%get_point(m,n))
+          v_hPa(m,n,4) = hourint(tint, v925_now%get_point(m,n), v925_next%get_point(m,n))
+          v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
+          v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
+          v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
 
-                !!!!!! INITIALISE SEA ICE GRID !!!!!
-                !! Note: this may need to move based on where we do the nextsim coupling
-                ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
-                ! call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+          do n_si = 1, ncat
+
+              !!!!!! INITIALISE SEA ICE GRID !!!!!
+              !! Note: this may need to move based on where we do the nextsim coupling
+              ! dzeta=-4./200 !alog(.2/z0+1.)/(ni-1.)
+              ! call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !                print *, "HCRTil loop for integrate ",n_si
-                if (sic(m,n,n_si).gt.0) then
-                    ice_snow_thick(m,n,n_si) = (sit(m,n,n_si) + snt(m,n,n_si))/sic(m,n,n_si) 
+              if (sic(m,n,n_si).gt.0) then
+                  ice_snow_thick(m,n,n_si) = (sit(m,n,n_si) + snt(m,n,n_si))/sic(m,n,n_si)
 !                    print *, "NEED TO FIX FOR THE EXAMPLE OF A DISAPPEARING CATEGORY!"
-                else
-                    ice_snow_thick(m,n,n_si) = 0.
-                endif
+              else
+                  ice_snow_thick(m,n,n_si) = 0.
+              endif
 !                print *, "NEWLOOP new sit and snt ",sit(m,n,n_si),snt(m,n,n_si),ice_snow_thick(m,n,n_si),", nsi ",n_si
 !                print *, "ice_snow_thick for dzeta and n_si = ",n_si," is ",ice_snow_thick(m,n,n_si)
-                call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
-                call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+              call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration
+              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !                print *, "HCRTil compute_dzeta ",ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si),ni
 !                print *, "ALBEDO, SEMIS, start loop 3 ",albedo(m,n,n_si),semis(m,n,n_si)
 
-                !print *, "about to integrate -----------", n_si
-                !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
-                !print *, "t_test ",m,n," t outside ",t(m,n,:) ! for n_si == 1, these should be the same. For n_si == 2, not used...
-                !print *,  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si)
-                !print *,  u_each_cat(m,n,:,n_si)
-                !print *,  v_each_cat(m,n,:,n_si)
-                !print *,  q_each_cat(m,n,:,n_si)
-                !print *, qi_each_cat(m,n,:,n_si) 
-                !print *,  e_each_cat(m,n,:,n_si)
-                !print *, ep_each_cat(m,n,:,n_si)
-                !print *,  uw_each_cat(m,n,:,n_si)
-                !print *,  vw_each_cat(m,n,:,n_si)
-                !print *, wt_each_cat(m,n,:,n_si)
-                !print *,  wq_each_cat(m,n,:,n_si)
-                !print *, wqi_each_cat(m,n,:,n_si)
-                !print *, km_each_cat(m,n,:,n_si)
-                !print *, kh_each_cat(m,n,:,n_si)
-                !print *, ustar_each_cat(m,n,n_si)
-                !print *,  p_each_cat(m,n,:,n_si)
-                !print *, tld_each_cat(m,n,:,n_si) 
-                !print *,  blht_each_cat(m,n,n_si)
-                !print *, rif_blht_each_cat(m,n,n_si)
+              !print *, "about to integrate -----------", n_si
+              !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
+              !print *, "t_test ",m,n," t outside ",t(m,n,:) ! for n_si == 1, these should be the same. For n_si == 2, not used...
+              !print *,  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si)
+              !print *,  u_each_cat(m,n,:,n_si)
+              !print *,  v_each_cat(m,n,:,n_si)
+              !print *,  q_each_cat(m,n,:,n_si)
+              !print *, qi_each_cat(m,n,:,n_si)
+              !print *,  e_each_cat(m,n,:,n_si)
+              !print *, ep_each_cat(m,n,:,n_si)
+              !print *,  uw_each_cat(m,n,:,n_si)
+              !print *,  vw_each_cat(m,n,:,n_si)
+              !print *, wt_each_cat(m,n,:,n_si)
+              !print *,  wq_each_cat(m,n,:,n_si)
+              !print *, wqi_each_cat(m,n,:,n_si)
+              !print *, km_each_cat(m,n,:,n_si)
+              !print *, kh_each_cat(m,n,:,n_si)
+              !print *, ustar_each_cat(m,n,n_si)
+              !print *,  p_each_cat(m,n,:,n_si)
+              !print *, tld_each_cat(m,n,:,n_si)
+              !print *,  blht_each_cat(m,n,n_si)
+              !print *, rif_blht_each_cat(m,n,n_si)
 !                print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
 !                print *, "SEMIS is ", semis(m,n,n_si), " for n_si = ",n_si
 !                print *, "Tsurf from, n_si = ",n_si
 !                print *, "gflux vals will be for n_si = ",n_si,", Tsurf is ",t_each_cat(m,n,1,n_si)
 !                print *, "THETA INT BEFORE ",theta(m,n,1),theta(m,n,2),theta(m,n,nj)
-                call Integrate_NeXtSIM_ABL( &
-                  albedo(m,n,n_si),                                         & ! Internal or from coupler?
-                  t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
-                  sdlw, sdsw,                                               & ! From file
-                  ntlw, ntsw, mslhf, msshf,                                 &
-                  slon,                                                     & ! See above
-                  semis(m,n,n_si),                                          & ! Internal or from coupler?
-                  rlat(m,n),                                                &
-                  z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
-                  ct_ice(m,n,n_si),  &
-    !              z0(m,n),                                                  & ! Internal or from coupler?
-                  taur(m,n),                                                & ! Internal variable
-                  p0%get_point(m,n),                                        & ! From file
-                  ds, ha, jd,                                               &
-                  nj,                                                       & ! Number of vertical grid points
-                  nv,                                                       & ! Always 6?
-                  dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
-                  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
-                  u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si), &
-                  q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),        & ! prognostics
-                  e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si), &
-                  vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),     & ! prognostics
-                  wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si), &
-                  kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),  & ! prognostics
-                  p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), & 
-                  blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
-                  !u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
-                  !e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
-                  !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
-                  !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
-                  ni,                                                       &
-                  dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
-                  do_si_coupling, & 
-                  gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
-                !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
-                !print *, "check lw_net af is ",lw_net(m,n,n_si)
-            enddo
+              call Integrate_NeXtSIM_ABL( &
+                albedo(m,n,n_si),                                         & ! Internal or from coupler?
+                t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
+                sdlw, sdsw,                                               & ! From file
+                ntlw, ntsw, mslhf, msshf,                                 &
+                slon,                                                     & ! See above
+                semis(m,n,n_si),                                          & ! Internal or from coupler?
+                rlat(m,n),                                                &
+                z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
+                ct_ice(m,n,n_si),  &
+  !              z0(m,n),                                                  & ! Internal or from coupler?
+                taur(m,n),                                                & ! Internal variable
+                p0%get_point(m,n),                                        & ! From file
+                ds, ha, jd,                                               &
+                nj,                                                       & ! Number of vertical grid points
+                nv,                                                       & ! Always 6?
+                dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
+                sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
+                u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si), &
+                q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),        & ! prognostics
+                e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si), &
+                vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),     & ! prognostics
+                wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si), &
+                kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),  & ! prognostics
+                p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), &
+                blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
+                !u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
+                !e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
+                !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
+                !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
+                ni,                                                       &
+                dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
+                do_si_coupling, &
+                gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
+              !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
+              !print *, "check lw_net af is ",lw_net(m,n,n_si)
+          enddo
 !            print *, "gflux to be output ",gflux
 
-            !! After each loop, make sure we update the main arrays with a
-            !merged column. BUT only use this merged array to force the next
-            !timestep if it is a nextsim coupling timestep and we have new ice
-            !inputs
-            u_sum_cat(:) = 0
-            v_sum_cat(:) = 0
-            t_sum_cat(:) = 0
-            q_sum_cat(:) = 0
-            qi_sum_cat(:) = 0
-            e_sum_cat(:) = 0
-            ep_sum_cat(:) = 0
-            uw_sum_cat(:) = 0
-            vw_sum_cat(:) = 0
-            wt_sum_cat(:) = 0
-            wq_sum_cat(:) = 0
-            wqi_sum_cat(:) = 0
-            km_sum_cat(:) = 0
-            kh_sum_cat(:) = 0
-            ustar_sum_cat = 0
-            p_sum_cat(:) = 0
-            tld_sum_cat(:) = 0
-            blht_sum_cat = 0
-            rif_blht_sum_cat = 0
+          !! After each loop, make sure we update the main arrays with a
+          !merged column. BUT only use this merged array to force the next
+          !timestep if it is a nextsim coupling timestep and we have new ice
+          !inputs
+          u_sum_cat(:) = 0
+          v_sum_cat(:) = 0
+          t_sum_cat(:) = 0
+          q_sum_cat(:) = 0
+          qi_sum_cat(:) = 0
+          e_sum_cat(:) = 0
+          ep_sum_cat(:) = 0
+          uw_sum_cat(:) = 0
+          vw_sum_cat(:) = 0
+          wt_sum_cat(:) = 0
+          wq_sum_cat(:) = 0
+          wqi_sum_cat(:) = 0
+          km_sum_cat(:) = 0
+          kh_sum_cat(:) = 0
+          ustar_sum_cat = 0
+          p_sum_cat(:) = 0
+          tld_sum_cat(:) = 0
+          blht_sum_cat = 0
+          rif_blht_sum_cat = 0
 
-            area_conc_ow = 1.
-            do n_si = 1, ncat
+          area_conc_ow = 1.
+          do n_si = 1, ncat
 !              print *, "HCRTil n_si = ",n_si
-              if (do_tiling.eq.0) then
-                area_conc = 1.
-              elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
-                area_conc = area_conc_ow
-              else
-                area_conc = sic(m,n,n_si) ! for the sea ice loop, area_conc = sic; for
-                area_conc_ow = area_conc_ow - area_conc
-                ! thin sea ice, sic_thin, for ocean, 1. - sic - sic_thin ... 
-                ! for this last one, assume that all categories are independent! i.e. for nextsim mooring output (not coupled, but used for testing), sit + sit_thin + ocean = 1
-              endif
-              !print *, "check! area_conc for n_si ",n_si,area_conc
-              u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
-              v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
-              t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
-              q_sum_cat = q_sum_cat + q_each_cat(m,n,:,n_si)*area_conc
-              qi_sum_cat = qi_sum_cat + qi_each_cat(m,n,:,n_si)*area_conc
-              e_sum_cat = e_sum_cat + e_each_cat(m,n,:,n_si)*area_conc
-              ep_sum_cat = ep_sum_cat + ep_each_cat(m,n,:,n_si)*area_conc
-              uw_sum_cat = uw_sum_cat + uw_each_cat(m,n,:,n_si)*area_conc
-              vw_sum_cat = vw_sum_cat + vw_each_cat(m,n,:,n_si)*area_conc
-              wt_sum_cat = wt_sum_cat + wt_each_cat(m,n,:,n_si)*area_conc
-              wq_sum_cat = wq_sum_cat + wq_each_cat(m,n,:,n_si)*area_conc
-              wqi_sum_cat = wqi_sum_cat + wqi_each_cat(m,n,:,n_si)*area_conc
-              km_sum_cat = km_sum_cat + km_each_cat(m,n,:,n_si)*area_conc
-              kh_sum_cat = kh_sum_cat + kh_each_cat(m,n,:,n_si)*area_conc
-              ustar_sum_cat = ustar_sum_cat + ustar_each_cat(m,n,n_si)*area_conc
-              p_sum_cat = p_sum_cat + p_each_cat(m,n,:,n_si)*area_conc
-              tld_sum_cat = tld_sum_cat + tld_each_cat(m,n,:,n_si)*area_conc
-              blht_sum_cat = blht_sum_cat + blht_each_cat(m,n,n_si)*area_conc
-              rif_blht_sum_cat = rif_blht_sum_cat + rif_blht_each_cat(m,n,n_si)*area_conc
+            if (do_tiling.eq.0) then
+              area_conc = 1.
+            elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
+              area_conc = area_conc_ow
+            else
+              area_conc = sic(m,n,n_si) ! for the sea ice loop, area_conc = sic; for
+              area_conc_ow = area_conc_ow - area_conc
+              ! thin sea ice, sic_thin, for ocean, 1. - sic - sic_thin ...
+              ! for this last one, assume that all categories are independent! i.e. for nextsim mooring output (not coupled, but used for testing), sit + sit_thin + ocean = 1
+            endif
+            !print *, "check! area_conc for n_si ",n_si,area_conc
+            u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
+            v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
+            t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
+            q_sum_cat = q_sum_cat + q_each_cat(m,n,:,n_si)*area_conc
+            qi_sum_cat = qi_sum_cat + qi_each_cat(m,n,:,n_si)*area_conc
+            e_sum_cat = e_sum_cat + e_each_cat(m,n,:,n_si)*area_conc
+            ep_sum_cat = ep_sum_cat + ep_each_cat(m,n,:,n_si)*area_conc
+            uw_sum_cat = uw_sum_cat + uw_each_cat(m,n,:,n_si)*area_conc
+            vw_sum_cat = vw_sum_cat + vw_each_cat(m,n,:,n_si)*area_conc
+            wt_sum_cat = wt_sum_cat + wt_each_cat(m,n,:,n_si)*area_conc
+            wq_sum_cat = wq_sum_cat + wq_each_cat(m,n,:,n_si)*area_conc
+            wqi_sum_cat = wqi_sum_cat + wqi_each_cat(m,n,:,n_si)*area_conc
+            km_sum_cat = km_sum_cat + km_each_cat(m,n,:,n_si)*area_conc
+            kh_sum_cat = kh_sum_cat + kh_each_cat(m,n,:,n_si)*area_conc
+            ustar_sum_cat = ustar_sum_cat + ustar_each_cat(m,n,n_si)*area_conc
+            p_sum_cat = p_sum_cat + p_each_cat(m,n,:,n_si)*area_conc
+            tld_sum_cat = tld_sum_cat + tld_each_cat(m,n,:,n_si)*area_conc
+            blht_sum_cat = blht_sum_cat + blht_each_cat(m,n,n_si)*area_conc
+            rif_blht_sum_cat = rif_blht_sum_cat + rif_blht_each_cat(m,n,n_si)*area_conc
 
-              blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
-            enddo
+            blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
+          enddo
 
-            ! now, add the new averaged arrays back to those to be carried
-            ! forward
-            u(m,n,:) = u_sum_cat
-            v(m,n,:) = v_sum_cat
-            t(m,n,:) = t_sum_cat
+          ! now, add the new averaged arrays back to those to be carried
+          ! forward
+          u(m,n,:) = u_sum_cat
+          v(m,n,:) = v_sum_cat
+          t(m,n,:) = t_sum_cat
 !            print *, "updates: ",t_each_cat(m,n,1,:),t_sum_cat(1),t(m,n,1)
 !            print *, "updates: ",t_each_cat(m,n,2,:),t_sum_cat(2),t(m,n,2)
 !            print *, "updates: ",t_each_cat(m,n,3,:),t_sum_cat(3),t(m,n,3)
-            !print *, "t_test ",m,n," t at end ",t(m,n,:)
-            q(m,n,:) = q_sum_cat 
-            qi(m,n,:) = qi_sum_cat 
-            e(m,n,:) = e_sum_cat  
-            ep(m,n,:) = ep_sum_cat 
-            uw(m,n,:) = uw_sum_cat 
-            vw(m,n,:) = vw_sum_cat 
-            wt(m,n,:) = wt_sum_cat 
-            wq(m,n,:) = wq_sum_cat 
-            wqi(m,n,:) = wqi_sum_cat 
-            km(m,n,:) = km_sum_cat 
-            kh(m,n,:) = kh_sum_cat 
-            ustar(m,n) = ustar_sum_cat 
-            p(m,n,:) = p_sum_cat 
-            tld(m,n,:) = tld_sum_cat 
-            blht(m,n) = blht_sum_cat 
-            rif_blht(m,n) = rif_blht_sum_cat 
+          !print *, "t_test ",m,n," t at end ",t(m,n,:)
+          q(m,n,:) = q_sum_cat
+          qi(m,n,:) = qi_sum_cat
+          e(m,n,:) = e_sum_cat
+          ep(m,n,:) = ep_sum_cat
+          uw(m,n,:) = uw_sum_cat
+          vw(m,n,:) = vw_sum_cat
+          wt(m,n,:) = wt_sum_cat
+          wq(m,n,:) = wq_sum_cat
+          wqi(m,n,:) = wqi_sum_cat
+          km(m,n,:) = km_sum_cat
+          kh(m,n,:) = kh_sum_cat
+          ustar(m,n) = ustar_sum_cat
+          p(m,n,:) = p_sum_cat
+          tld(m,n,:) = tld_sum_cat
+          blht(m,n) = blht_sum_cat
+          rif_blht(m,n) = rif_blht_sum_cat
 
-            ! if (do_merge_columns.eq.1) then
-            !   do n_si = 1,ncat
-            !     ! Now reinitialise (but will this be overwritten anyway?)
-            !     u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
-            !     v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
-            !     t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
-            !     q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
-            !     qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
-            !     e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
-            !     ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
-            !     uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
-            !     vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
-            !     wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
-            !     wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
-            !     wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
-            !     km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
-            !     kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
-            !     ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
-            !     p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
-            !     tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
-            !     blht_each_cat(m,n,n_si) = blht(m,n)*1.
-            !     rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
-            !   enddo
-            ! endif 
-       
-          enddo
+          ! if (do_merge_columns.eq.1) then
+          !   do n_si = 1,ncat
+          !     ! Now reinitialise (but will this be overwritten anyway?)
+          !     u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
+          !     v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
+          !     t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
+          !     q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
+          !     qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
+          !     e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
+          !     ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
+          !     uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
+          !     vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
+          !     wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
+          !     wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
+          !     wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
+          !     km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
+          !     kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
+          !     ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
+          !     p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
+          !     tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
+          !     blht_each_cat(m,n,n_si) = blht(m,n)*1.
+          !     rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
+          !   enddo
+          ! endif
+
         enddo
 !$OMP END DO
 
@@ -1507,33 +1501,33 @@ PROGRAM ABL
         ! I am doing this here rather than in the previous loop because otherwise Met_SI* are not output correctly
         if (do_tiling.eq.1) then
 !$OMP DO
-          do m = 1, mgr
-            do n = 1, ngr
-              if (do_merge_columns.eq.1) then
-                do n_si = 1,ncat
-                  ! Now reinitialise
-                  u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
-                  v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
-                  t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
-                  q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
-                  qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
-                  e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
-                  ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
-                  uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
-                  vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
-                  wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
-                  wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
-                  wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
-                  km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
-                  kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
-                  ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
-                  p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
-                  tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
-                  blht_each_cat(m,n,n_si) = blht(m,n)*1.
-                  rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
-                enddo
-              endif 
-            enddo
+          do i = 1, size(ocean_index, 2)
+            m = ocean_index(1,i)
+            n = ocean_index(2,i)
+            if (do_merge_columns.eq.1) then
+              do n_si = 1,ncat
+                ! Now reinitialise
+                u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
+                v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
+                t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
+                q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
+                qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
+                e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
+                ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
+                uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
+                vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
+                wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
+                wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
+                wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
+                km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
+                kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
+                ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
+                p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
+                tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
+                blht_each_cat(m,n,n_si) = blht(m,n)*1.
+                rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
+              enddo
+            endif
           enddo
 !$OMP END DO
         endif

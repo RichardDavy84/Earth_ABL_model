@@ -119,7 +119,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
 !      returns them
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, mask)
+  subroutine read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, ocean_index)
 
     implicit none
 
@@ -127,11 +127,13 @@ double precision function netCDF_time(self, time_in) result(time_out)
     character(len=*), intent(in) :: fname, lon_name, lat_name, mask_name
     integer, intent(out) :: mgr, ngr
     real, dimension(:,:), allocatable, intent(out) :: rlat, rlon
-    integer, dimension(:,:), allocatable, intent(out) :: mask
+    integer, dimension(:,:), allocatable, intent(out) :: ocean_index
 
     ! Working variables
     integer, dimension(:), allocatable :: dimlens
     character(len=short_string), dimension(:), allocatable :: dimnames
+    integer, dimension(:,:), allocatable :: mask
+    integer :: m, n
 
     ! get the dims
     call nc_dims(fname, lon_name, dimnames, dimlens)
@@ -147,6 +149,15 @@ double precision function netCDF_time(self, time_in) result(time_out)
     call nc_read(fname, lon_name, rlon)
     call nc_read(fname, lat_name, rlat)
     call nc_read(fname, mask_name, mask)
+
+    allocate(ocean_index(2,0))
+    do m = 1, mgr
+      do n = 1, ngr
+        if ( mask(m,n) .ne. 0 ) then
+          ocean_index = reshape(ocean_index, shape=[2, size(ocean_index,2)+1], pad=[m, n])
+        endif
+      enddo
+    enddo
 
   end subroutine read_grid
 
@@ -179,6 +190,10 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Get file name - we can't save it, because it may change with time
     fname = self%get_filename(time, filename_st)
+
+    ! Workaround for a compiler bug
+    self%lon_name = "longitude"
+    self%lat_name = "latitude"
 
     ! get the dims and allocate and read from file
     call nc_dims(fname, self%lon_name, dimnames, dimlens)
@@ -704,14 +719,14 @@ double precision function netCDF_time(self, time_in) result(time_out)
 ! Routine to initialise a netCDF file
 !   - We write the x, y, and time dimensions, mask, and lat/lon coords
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine init_netCDF(self, fname, mgr, ngr, mask, lon, lat, zm, zt, zgnd, nz)
+  subroutine init_netCDF(self, fname, mgr, ngr, ocean_index, lon, lat, zm, zt, zgnd, nz)
 
     implicit none
 
     class(output_file), intent(inout) :: self
     character(len=*), intent(in) :: fname
     integer, intent(in) :: mgr, ngr
-    integer, dimension(:,:), intent(in) :: mask
+    integer, dimension(:,:), intent(in) :: ocean_index
     real, dimension(:,:), intent(in) :: lon, lat
     real, dimension(:), intent(in), optional :: zm, zt, zgnd
     integer, intent(in), optional :: nz
@@ -720,7 +735,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! We set time to 0. becuase ncio requires some data for the initial time
     double precision, parameter :: time = 0.
     character(len=long_string) :: time_string, dimname
-    integer :: i
+    integer :: i, m, n
+    integer, dimension(mgr, ngr) :: mask
 
     ! Save the file name
     self%fname = fname
@@ -749,6 +765,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
     call nc_write_dim(self%fname, "time", time, unlimited=.true., units=trim(time_string), calendar=trim(self%calendar))
 
     ! Write lon, lat, and mask variables
+    mask = 0
+    do i = 1, size(ocean_index,2)
+      m = ocean_index(1,i)
+      n = ocean_index(2,i)
+      mask(m,n) = 1
+    enddo
     call nc_write(self%fname, "mask", mask, dim1="x", dim2="y")
     call nc_write(self%fname, "longitude", lon, dim1="x", dim2="y", &
       long_name="longitude", standard_name="longitude", units="degrees_north")

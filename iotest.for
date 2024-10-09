@@ -11,10 +11,10 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         IMPLICIT NONE
 
         CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
-        INTEGER :: mgr, ngr, i, j, k
+        INTEGER :: mgr, ngr, i, j, k, m, n
         REAL, ALLOCATABLE, DIMENSION(:,:) :: rlat, rlon, output2D
         REAL, ALLOCATABLE, DIMENSION(:,:,:) :: output3D
-        INTEGER, ALLOCATABLE, DIMENSION(:,:) :: mask
+        INTEGER, ALLOCATABLE, DIMENSION(:,:) :: ocean_index, mask
 
         TYPE(datetime) :: time
 
@@ -30,17 +30,24 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         mask_name = "mask"
 
         CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr,
-     1                                                  rlon, rlat,mask)
+     1                                           rlon, rlat,ocean_index)
 
         print *, "Read ", trim(fname)
         print *, "mgr = ", mgr
         print *, "ngr = ", ngr
 
-        print *, "maxval(rlon) = ", maxval(rlon), 
+        print *, "maxval(rlon) = ", maxval(rlon),
      1           "minval(rlon) = ", minval(rlon)
-        print *, "maxval(rlat) = ", maxval(rlat), 
+        print *, "maxval(rlat) = ", maxval(rlat),
      1           "minval(rlat) = ", minval(rlat)
 
+        allocate(mask(mgr,ngr))
+        mask = 0
+        do i = 1, size(ocean_index,2)
+          m = ocean_index(1,i)
+          n = ocean_index(2,i)
+          mask(m,n) = 1
+        enddo
 
         do i = 1, mgr, mgr/100
           do j = 1, ngr, ngr/100
@@ -60,7 +67,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         time = datetime(2015,12,15,12,15,12,15)
         print *, time%isoformat()
         fname = "out_test.nc"
-        call output_test%init(fname, mgr, ngr, mask, rlon, rlat, nz=10)
+        call output_test%init(fname, mgr, ngr, ocean_index, rlon, rlat,
+     1                                                            nz=10)
         call output_test%add_var("test2D",
      1      long_name="test_for_a_2D_case",
      1      standard_name="test for a 2D case",
@@ -115,7 +123,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! Write the intrapolation results to file
         fname = "msl_interp.nc"
         print *, trim(fname)
-        call interp_out%init(fname, mgr, ngr, mask, rlon, rlat)
+        call interp_out%init(fname, mgr, ngr, ocean_index, rlon, rlat)
         call interp_out%add_var("msl",
      1      long_name="interpolated_msl",
      2      standard_name="interpolated msl",
@@ -125,10 +133,11 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         call interp_out%append_time(time)
 
 ! Apply the mask
-        do i = 1, mgr
-          do j = 1, ngr
-            output2D(i,j) = mask(i,j) * mslp%get_point(i,j)
-          enddo
+        output2D = 0
+        do i = 1, size(ocean_index, 2)
+          m = ocean_index(1,i)
+          n = ocean_index(2,i)
+          output2D(m,n) = mslp%get_point(m,n)
         enddo
         call interp_out%append_var("msl", output2D)
 
@@ -137,10 +146,10 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           time = time + timedelta(hours=1)
           call mslp%read_input(time, "ERA")
           call interp_out%append_time(time)
-          do i = 1, mgr
-            do j = 1, ngr
-              output2D(i,j) = mask(i,j) * mslp%get_point(i,j)
-            enddo
+          do i = 1, size(ocean_index, 2)
+            m = ocean_index(1,i)
+            n = ocean_index(2,i)
+            output2D(m,n) = mslp%get_point(m,n)
           enddo
           call interp_out%append_var("msl", output2D)
         enddo

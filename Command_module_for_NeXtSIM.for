@@ -25,7 +25,7 @@ c***********************************************************************
      1    semis,rlat,z0_in,
      1    ct_ice,
      1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
-     1    sic, sit, snt, !HCRadd
+     1    sic, sit, snt, sst, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
      1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_800, 
@@ -116,6 +116,7 @@ c      REAL*8 u_in,v_in
       REAL zfrc_top,zfrc_bot,zfrc,rif_frac,hloc
 
 c     for conductive heat flux
+      REAL sst
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
       REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
@@ -595,8 +596,8 @@ c        CALL compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni) ! this is now done j
 c        print *, "T: sit+snt ",sit+snt
         if ((sit + snt).eq.0.) then
 c          print *, "T: set to freezzing"
-          t(1) = 271.15
-          tsoil(1) = 271.15
+          t(1) = sst ! 271.15
+          tsoil(1) = sst !271.15
 c          print *, "t after soiltdm", t
         else
 c          print *, "T: NOT set to freezzing"

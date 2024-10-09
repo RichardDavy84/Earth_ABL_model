@@ -86,10 +86,11 @@ PROGRAM ABL
   TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
   TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
+  TYPE(input_var) :: sst_now,sst_next
   TYPE(input_var) :: sic_init, sit_init, snt_init, sic2_init, sit2_init, snt2_init ! Currently from nextsim or ERA5
   REAL :: u850, v850, t850, sdlw, sdsw, ntlw, ntsw,mslhf,msshf
   REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
-  REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf !for conductive heat flux
+  REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf, sst !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
   TYPE(input_var) :: u900_now, u925_now, u950_now, u975_now, u1000_now
   TYPE(input_var) :: v700_now, v750_now, v775_now, v800_now, v825_now, v875_now
@@ -258,7 +259,7 @@ PROGRAM ABL
 
   !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
-  ALLOCATE(taur, blht, rif_blht, blht_max, mold = ustar)
+  ALLOCATE(taur, blht, rif_blht, blht_max, sst, mold = ustar)
   ALLOCATE(z0(mgr,ngr,ncat)) !! NEW
   ALLOCATE(albedo, semis, ct_ice, dzeta, sit, sic, snt, mold = z0) !! NEW
   ALLOCATE(tld(mgr,ngr,nj))
@@ -423,6 +424,9 @@ PROGRAM ABL
   call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
   call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
 
+  call sst_now%init("sst","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sst_next%init("sst","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+
   if (do_si_ics.eq.2) then
       if (si_ics_ftype=="Moorings") then
           call sic_init%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
@@ -431,9 +435,9 @@ PROGRAM ABL
           call sit_init%read_input(time0, "Moorings")
           call snt_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
           call snt_init%read_input(time0, "Moorings")
-          call sic2_init%init("sic_thin","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sic2_init%init("sic_young","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
           call sic2_init%read_input(time0, "Moorings")
-          call sit2_init%init("sit_thin","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sit2_init%init("sit_young","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
           call sit2_init%read_input(time0, "Moorings")
           call snt2_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
           call snt2_init%read_input(time0, "Moorings")
@@ -443,8 +447,6 @@ PROGRAM ABL
           ! WHAT TO DO FOR SNOW???
       endif
   endif  
-
-  print *, "____ READ IN SST??? ________"
 
   print *, "initialised some"
 
@@ -457,6 +459,7 @@ PROGRAM ABL
   print *, "read_input some a2"
   call snt_now%read_input(time0, "Moorings")
   print *, "read_input some a3"
+  call sst_now%read_input(time0, "Moorings")
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
@@ -554,6 +557,7 @@ PROGRAM ABL
       enddo
       ! Now read in sea ice ICs
       if (do_si_ics.eq.1) then
+        sst(m,n) = 271.15 !set to freezing point
         do n_si = 1,ncat
             sic(m,n,n_si) = const_sic_init(n_si)
             if (n_si.lt.ncat) then
@@ -578,6 +582,7 @@ PROGRAM ABL
         ! First, check that the sea ice concentration is between zero and one. If not, it is land and we don't compute it      
         if ( (sic(m,n,1).ge.0) .AND. (sic(m,n,1).le.1)) then       
           if (si_ics_ftype=="Moorings") then
+            sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K 
             ! Situation 1: one category of sea ice, one of open water
             if (ncat.lt.3) then ! does this apply to one category too? Shouldn't only have ice, there's always an open water
                 ! option... but if we want to do the merged category by only running one category, we still treat nextsim input like
@@ -642,6 +647,7 @@ PROGRAM ABL
             snt(m,n,1) = const_snt_init(1)
             ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
             sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
+            sst(m,n) = sst_now%get_point(m,n) ! already in K 
             if (ncat.gt.2) then
                 ! In ERA, we only have one ice category. If we want others, we need nonzero conc in constants and read from there
                 do n_si = 2,ncat-1
@@ -1393,7 +1399,7 @@ PROGRAM ABL
                   nj,                                                       & ! Number of vertical grid points
                   nv,                                                       & ! Always 6?
                   dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
-                  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
+                  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),sst(m,n),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
                   u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si), &
                   q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),        & ! prognostics
                   e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si), &

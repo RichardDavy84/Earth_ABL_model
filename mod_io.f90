@@ -191,10 +191,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Get file name - we can't save it, because it may change with time
     fname = self%get_filename(time, filename_st)
 
-    ! Workaround for a compiler bug
-    self%lon_name = "longitude"
-    self%lat_name = "latitude"
-
     ! get the dims and allocate and read from file
     call nc_dims(fname, self%lon_name, dimnames, dimlens)
     if (filename_st == "ERA" ) then

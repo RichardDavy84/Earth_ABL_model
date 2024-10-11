@@ -1,5 +1,5 @@
 &grid_info
-  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grid.nc",
+  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/Fram.nc",
   lon_name = "plon",
   lat_name = "plat",
   mask_name = "mask",
@@ -32,20 +32,6 @@
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
   do_si_ics = 1., ! =1 means use constants in constants_info; =2 means from file
   si_ics_ftype = "Moorings" ! Moorings or ERA
-  !! Pack ice situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.2, 0.02)
-  ! init_sic = 0.90,
-  ! init_sic_young = 0.05,
-  ! init_sit = 1.8,
-  ! init_sit_young = 0.01,
-  ! init_snt = 0.18,
-  ! init_snt_young = 0.001
-  !! MIZ situation (true thickness (sit, snt, sit_thin, snt_thin) = 2, 0.2, 0.0, 0.0)
-  ! init_sic = 0.50,
-  ! init_sic_young = 0.0,
-  ! init_sit = 1.,
-  ! init_sit_young = 0.0,
-  ! init_snt = 0.2,
-  ! init_snt_young = 0.0
 /
 
 &forcing_info

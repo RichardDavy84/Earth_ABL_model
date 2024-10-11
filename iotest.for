@@ -7,7 +7,6 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
       PROGRAM test_io
 
         USE io
-        USE datetime_module
 
         IMPLICIT NONE
 
@@ -33,7 +32,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr,
      1                                                  rlon, rlat,mask)
 
-        print *, "Read ", fname
+        print *, "Read ", trim(fname)
         print *, "mgr = ", mgr
         print *, "ngr = ", ngr
 
@@ -66,7 +65,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
      1      long_name="test_for_a_2D_case",
      1      standard_name="test for a 2D case",
      1      units = "-")
-        call output_test%add_var("test3D", zdim="z",
+        call output_test%add_var("test3D", zdim="nz",
      1      long_name="test_for_a_3D_case",
      1      standard_name="test for a 3D case",
      1      units = "-")
@@ -77,6 +76,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! First step and output
         output2D = 0.0
         output3D = 0.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
 
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)
@@ -86,6 +88,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! append_netCDF_time
         output2D = 1.0
         output3D = 1.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
         time = time + timedelta(days=1)
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)
@@ -94,6 +99,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! Third step and output
         output2D = 2.0
         output3D = 2.0
+        do i = 2, 10
+          output3D(:,:,i) = output3D(:,:,i-1) + 0.1
+        enddo
         time = time + timedelta(days=1)
         call output_test%append_time(time)
         call output_test%append_var("test2D", output2D)
@@ -106,7 +114,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
 ! Write the intrapolation results to file
         fname = "msl_interp.nc"
-        print *, fname
+        print *, trim(fname)
         call interp_out%init(fname, mgr, ngr, mask, rlon, rlat)
         call interp_out%add_var("msl",
      1      long_name="interpolated_msl",

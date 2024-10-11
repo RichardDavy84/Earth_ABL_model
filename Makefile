@@ -8,7 +8,7 @@ IOTEST = iotest.x
 # Put objects and libraries in seperate directories
 OBJ_DIR = .obj
 
-LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -I $(OBJ_DIR)
+LDFLAGS += -ldatetime -lncio -lnetcdff -lnetcdf -I $(OBJ_DIR)
 
 # The source files for modules
 SRC = mod_io.f90 mod_physics.f90

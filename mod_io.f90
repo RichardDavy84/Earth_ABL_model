@@ -29,8 +29,8 @@ module io
 
     character(len=long_string), private :: fname_format = "${dir}/ERA5_${var}_y%Y.nc"
     character(len=long_string), private :: fname_format2 = "${dir}/Moorings_%Ym%m.nc"
-    character(len=9), private :: lon_name = "longitude"
-    character(len=8), private :: lat_name = "latitude"
+    character(len=short_string), private :: lon_name = "longitude"
+    character(len=short_string), private :: lat_name = "latitude"
 
     contains
       procedure, public :: init=>init_input_var, read_input, get_point, get_array
@@ -72,7 +72,7 @@ module io
   end type
 
   public :: read_grid, output_file, input_var
-  private :: bisect, push_back
+  private :: bisect
 
   contains
 
@@ -93,17 +93,17 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Express the difference between time_in and reference time in time_unit
     dt = time_in - strptime(trim(self%reference_time), trim(self%time_format))
 
-    if ( self%time_unit .eq. "seconds" ) then
+    select case ( self%time_unit )
+    case ( "seconds" )
       time_out = dt%total_seconds()
-      return
-    elseif ( self%time_unit .eq. "hours" ) then
+    case ( "hours" )
       time_out = dt%total_seconds()/3600.
-      return
-    elseif ( self%time_unit .eq. "days" ) then
+    case ( "days" )
       time_out = dt%total_seconds()/86400.
-    else
-      stop "mod_io: netCDF_time: Case not recognised:"!//trim(self%time_unit)//" not recognised"
-    endif
+    case default
+      stop "mod_io: netCDF_time: Time unit '"//trim(self%time_unit)//"' not recognised"
+      stop "mod_io: netCDF_time: Time unit not recognised:"
+    end select
 
     end function netCDF_time
 
@@ -224,7 +224,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
       enddo
     endif
 
-
     ! Calculate weights:
     if (filename_st == "ERA") then
       call calc_weights(self, elon, elat, lon_fx, lat) !this will be different with 2d lat lon 
@@ -269,7 +268,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Get file name
     fname = self%get_filename(time, filename_st)
-    print *, "filename is ",fname
 
     ! Deduce the time slice
     if (filename_st == "ERA") then
@@ -296,9 +294,6 @@ double precision function netCDF_time(self, time_in) result(time_out)
       allocate(data_ll(dimlens(1), dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
-      ! allocate(data_ll(dimlens(2)+1, dimlens(3)))
-      ! call nc_read(fname, self%vname, data_ll(1:dimlens(2),1:dimlens(3)), &
-      !   start=[time_slice, 1, 1], count=[1, dimlens(2), dimlens(3)])
     endif
 
     ! TODO: Add 3D here
@@ -364,9 +359,9 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Use c_strftime to format the time part of the file name
     if ( filename_st == "ERA" ) then
-      i = c_strftime(fname, len(fname), self%fname_format, time%tm())
+      i = c_strftime(fname, len(fname)+1, self%fname_format, time%tm())
     elseif ( filename_st == "Moorings" ) then
-      i = c_strftime(fname, len(fname), self%fname_format2, time%tm())
+      i = c_strftime(fname, len(fname)+1, self%fname_format2, time%tm())
     endif
 
     if ( filename_st == "ERA" ) then
@@ -802,7 +797,13 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     call variable%init(vname, zdim, long_name, standard_name, units, grid_mapping, missing_value)
 
-    self%var_list = push_back(self%var_list, variable)
+    ! Append the variable to the list of variables
+    if ( allocated(self%var_list) ) then
+      self%var_list = [self%var_list, variable]
+    else
+      allocate(self%var_list(1))
+      self%var_list = variable
+    endif
 
   end subroutine add_var
 
@@ -915,33 +916,5 @@ double precision function netCDF_time(self, time_in) result(time_out)
     enddo
 
   end subroutine append_var_3D
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! std::vector.push_back (kind of)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  function push_back(varlist_in, variable) result(varlist_out)
-
-    type(output_var), dimension(:), allocatable, intent(in) :: varlist_in
-    type(output_var), intent(in) :: variable
-
-    type(output_var), dimension(:), allocatable :: varlist_out
-
-    ! Working variables
-    integer :: i
-
-    if ( .not. allocated(varlist_in) ) then
-      allocate(varlist_out(1))
-      varlist_out(1) = variable
-    else
-      allocate(varlist_out(size(varlist_in)+1))
-
-      do i=1, size(varlist_in)
-        varlist_out(i) = varlist_in(i)
-      enddo
-
-      varlist_out(size(varlist_in)) = variable
-    endif
-
-  end function push_back
 
 end module io

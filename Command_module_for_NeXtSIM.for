@@ -304,11 +304,11 @@ c      print *, "T adjustment, starts = ",t
 c      print *, "T adjustment, ERA = ",t_Pa_to_z
       do jj=min_Loc,max_Loc
          if ( jj.eq.jj_justbelow) then
-           nudge_fac=nudge_justbelow_bl
+           nudge_fac=nudge_justbelow_bl*ds/3600.
          elseif(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
-           nudge_fac=nudge_below_bl
+           nudge_fac=nudge_below_bl*ds/3600.
          elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
-           nudge_fac=nudge_above_bl
+           nudge_fac=nudge_above_bl*ds/3600.
          endif
          t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
          u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data

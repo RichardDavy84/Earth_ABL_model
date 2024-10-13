@@ -273,10 +273,14 @@ double precision function netCDF_time(self, time_in) result(time_out)
     if (filename_st == "ERA") then
         t0 = datetime(time%getYear(), 01, 01) ! it's a yearly file
     elseif (filename_st == "Moorings") then
-        t0 = datetime(time%getYear(), time%getMonth(), 01) ! it's a yearly file
+        t0 = datetime(time%getYear(), time%getMonth(), 01) ! it's a monthly file
     endif
     dt = time - t0
-    time_slice = nint(dt%total_seconds()/3600.) + 1
+    if (filename_st == "ERA") then
+        time_slice = nint(dt%total_seconds()/3600.) + 1 ! data is hourly
+    elseif (filename_st == "Moorings") then
+        time_slice = nint(dt%total_seconds()/(6.*3600.)) + 1 ! data is hourly
+    endif
 
     ! Get size of input data and allocate
     call nc_dims(fname, self%vname, dimnames, dimlens)
@@ -286,6 +290,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
       allocate(data_ll(dimlens(1)+1, dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
+        print *, "looking for time slice ERA ",time_slice
       ! Fix to get periodic boundary
       data_ll(dimlens(1)+1,:) = data_ll(1,:)
     elseif (filename_st == "Moorings") then

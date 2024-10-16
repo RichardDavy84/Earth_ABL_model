@@ -165,11 +165,12 @@ c       rl0=.00027*ug/fc
 
 
 c---------Calculate grid mesh (zm,zt)
-        rlb=80             ! =300 for nj=121, =100 for nj=241, =80 for nj=361
-        ct_atmos=.1              ! =0.1 (Roughness for coordinate tranform)
+c        rlb=80             ! =300 for nj=121, =100 for nj=241, =80 for nj=361 ! SET IN SETUP_INFO
+c        ct_atmos=.1              ! =0.1 (Roughness for coordinate tranform) ! SET IN SETUP_INFO
         zref=0
-        ztop=3000. ! Was 30000, but can be changed
+c        ztop=3000. ! Was 30000, but can be changed
 c        ztop=4000. ! Was 30000, but can be changed
+      print *, "ztop ",ztop
       eta1=alog(zref/ct_atmos+1.)+zref/rlb
       deta=(alog(ztop/ct_atmos+1.)+ztop/rlb)/(nj-1.)
 

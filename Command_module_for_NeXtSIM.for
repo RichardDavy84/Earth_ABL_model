@@ -192,9 +192,9 @@ c      here, read in an input file with defined pressure levels
        hPa(3)=950.
        hPa(2)=975.
        hPa(1)=1000.
-      nudge_above_bl=0.8
-      nudge_justbelow_bl=0.5
-      nudge_below_bl=0.2
+       nudge_above_bl=0.8
+       nudge_justbelow_bl=0.5
+       nudge_below_bl=0.2
 cccccc
 c     INTERPOLATE
 c     STEP 1: create a new array of Locations (shape 12)   
@@ -219,9 +219,10 @@ c - messy!!!
         v_Pa_to_z(jj)=0.
         t_Pa_to_z(jj)=0.
         hloc = minloc(abs(hPa-p(jj)/100.),1) ! This is the closest
-        if (zm(jj).lt.40.) then !if close to surface, ignore
-          min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
-        elseif ((p(jj)/100.).gt.(hPa(1))) then ! model level < lowest forcing
+        ! if (zm(jj).lt.40.) then !if close to surface, ignore
+        !   min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
+        ! elseif ((p(jj)/100.).gt.(hPa(1))) then ! model level < lowest forcing
+        if ((p(jj)/100.).gt.(hPa(1))) then ! model level < lowest forcing
           ! do not nudge
           min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
         elseif (p(jj)/100..lt.hPa(12)) then
@@ -231,16 +232,16 @@ c - messy!!!
 c         this is because height increases as j increases
           if (hloc.gt.1) then
            ! make sure that zm_at_p(hloc-1) is reasonable
-           if (zm_at_p(hloc-1).gt.40.) then
+           !if (zm_at_p(hloc-1).gt.40.) then
             zfrc_top=(p(jj)/100.-hPa(hloc-1))
             zfrc = zfrc_top/(hPa(hloc)-hPa(hloc-1))
 c            print *, "zfrc ",zfrc
             u_Pa_to_z(jj)=u_hPa(hloc-1)+zfrc*(u_hPa(hloc)-u_hPa(hloc-1))
             v_Pa_to_z(jj)=v_hPa(hloc-1)+zfrc*(v_hPa(hloc)-v_hPa(hloc-1))
             t_Pa_to_z(jj)=t_hPa(hloc-1)+zfrc*(t_hPa(hloc)-t_hPa(hloc-1))
-           else
-            min_Loc = MAX(min_Loc,jj+1)
-           endif
+           !else
+           ! min_Loc = MAX(min_Loc,jj+1)
+           !endif
           else
             ! in this situation, we are closer to surface than input
             ! data, so cannot interpolate
@@ -273,13 +274,13 @@ c     minLoc and maxLoc accordingly
       endif
 
 c      print *, "NEED TO MAKE THIS MORE ROBUST"
-      do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
-        if (t_Pa_to_z(jj).eq.0.) then
-          u_Pa_to_z(jj)=u_hPa(12)
-          v_Pa_to_z(jj)=v_hPa(12)
-          t_Pa_to_z(jj)=t_hPa(12)
-        endif
-      enddo
+c      do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
+c        if (t_Pa_to_z(jj).eq.0.) then
+c          u_Pa_to_z(jj)=u_hPa(12)
+c          v_Pa_to_z(jj)=v_hPa(12)
+c          t_Pa_to_z(jj)=t_hPa(12)
+c        endif
+c      enddo
 
       if (blht_max.lt.0.) then
           ! this means that the boundary layer height has not yet been
@@ -299,7 +300,6 @@ c      print *, jj_justbelow
       enddo
 c      print *, jj_justbelow
 c      print *, "NUDGE"
-c      print *, "T adjustment, min_Loc = ",min_Loc
 c      print *, "T adjustment, starts = ",t
 c      print *, "T adjustment, ERA = ",t_Pa_to_z
       do jj=min_Loc,max_Loc
@@ -319,7 +319,7 @@ c      print *, "T adjustment, ERA = ",t_Pa_to_z
        do jj=max_Loc,nj
             u(jj)=u_Pa_to_z(max_Loc)
             v(jj)=v_Pa_to_z(max_Loc)
-            t(jj)=t_Pa_to_z(max_Loc)
+       !     ! t(jj)=t_Pa_to_z(max_Loc)
        enddo
 c       print *, "T adjustment, ends = ",t
 c      enddo
@@ -480,7 +480,7 @@ c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
  120    CONTINUE
-c        print *, "t after solve ",t
+
 c---------Calculating turbulent length scales, eddy diffusivity & fluxes
         CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
      1              kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,

@@ -290,12 +290,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
       allocate(data_ll(dimlens(1)+1, dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])
-        print *, "looking for time slice ERA ",time_slice
+        ! print *, "looking for time slice ERA ",time_slice
       ! Fix to get periodic boundary
       data_ll(dimlens(1)+1,:) = data_ll(1,:)
     elseif (filename_st == "Moorings") then
-      print *, "size of Mooring ",dimlens(1),dimlens(2),dimlens(3)
-      print *, "looking for time slice ",time_slice
+      !print *, "size of Mooring ",dimlens(1),dimlens(2),dimlens(3)
+      !print *, "looking for time slice ",time_slice
       allocate(data_ll(dimlens(1), dimlens(2)))
       call nc_read(fname, self%vname, data_ll(1:dimlens(1),1:dimlens(2)), &
         start=[1, 1, time_slice], count=[dimlens(1), dimlens(2), 1])

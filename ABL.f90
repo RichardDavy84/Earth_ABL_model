@@ -26,6 +26,7 @@ PROGRAM ABL
 
   use omp_lib
   use io
+  use physics, only: ztop, rlb, ct_atmos
 
   !-------------! Inputs needed are:
   !.  albedo - Surface albedo
@@ -168,7 +169,8 @@ PROGRAM ABL
   REAL(KIND=8) :: slon
 
   INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
-  REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init
+  REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init, const_ct_ice
+  REAL, DIMENSION(:), ALLOCATABLE :: const_albedo, const_semis
 
   REAL :: q0_val
 
@@ -180,7 +182,8 @@ PROGRAM ABL
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, si_ics_ftype 
   namelist /forcing_info/ repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
-  namelist /constants_info/ const_z0, const_sic_init, const_sit_init, const_snt_init
+  namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
+          const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
 
   open(unit=10, file='setup_info.nml', status='old')
   read(10, nml=grid_info)
@@ -190,9 +193,12 @@ PROGRAM ABL
   read(10, nml=forcing_info)
 
   ALLOCATE(const_z0(n_surf_cat))
+  ALLOCATE(const_ct_ice(n_surf_cat))
   ALLOCATE(const_sic_init(n_surf_cat))
   ALLOCATE(const_sit_init(n_surf_cat))
   ALLOCATE(const_snt_init(n_surf_cat))
+  ALLOCATE(const_albedo(n_surf_cat))
+  ALLOCATE(const_semis(n_surf_cat))
 
   read(10, nml=constants_info)
 
@@ -535,20 +541,20 @@ PROGRAM ABL
 !      print *, "about to INITIALIZE!!!"
 
 
-      print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
+      ! print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
       ! Should this albedo ultimately be affected by the snow?
-      print *, "future consideration is to include snow albedo"
+      ! print *, "future consideration is to include snow albedo"
       ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
       if (ncat.gt.1) then
         do n_si = 1,ncat-1
-          albedo(m,n,n_si) = 0.63 ! Albedo for thick ice (nextsim default)
-          semis(m,n,n_si) = 0.996 ! Emissivity of ice, as in nextsim
+          albedo(m,n,n_si) = const_albedo(n_si) !0.63 ! Albedo for thick ice (nextsim default)
+          semis(m,n,n_si) = const_semis(n_si) !0.996 ! Emissivity of ice, as in nextsim
         enddo
-        albedo(m,n,ncat) = 0.07 ! Albedo for ocean (nextsim default)
-        semis(m,n,ncat) = 0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
+        albedo(m,n,ncat) = const_albedo(ncat) !0.07 ! Albedo for ocean (nextsim default)
+        semis(m,n,ncat) = const_semis(ncat) !0.95 ! Emissivity of ocean (J.R.Garratt book: The atmospheric boundary layer, p292)
       else
-        albedo(m,n,1) = 0.63 ! Albedo for thick ice (nextsim default)
-        semis(m,n,1) = 0.996 ! Emissivity of ice, as in nextsim
+        albedo(m,n,1) = const_albedo(1) !0.63 ! Albedo for thick ice (nextsim default)
+        semis(m,n,1) = const_semis(1) !0.996 ! Emissivity of ice, as in nextsim
       endif
 
 !      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
@@ -706,7 +712,7 @@ PROGRAM ABL
       !enddo
 
 !!    Settings for "soil" code
-      ct_ice(m,n,:) = z0(m,n,:)        ! for now, use same ct_ice as z0
+      ct_ice(m,n,:) = const_ct_ice(:)        ! for now, use same ct_ice as z0 via setup_info
      
       ! Do some initialising
       dedzs(m,n,:,:) = 0.

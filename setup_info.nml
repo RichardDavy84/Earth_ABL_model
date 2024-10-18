@@ -31,10 +31,12 @@
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
   do_si_ics = 1., ! =1 means use constants in constants_info; =2 means from file
+  seaice_ics_dir = "/cluster/projects/nn9878k/hregan/ABL/data/Moorings_lowres",
   si_ics_ftype = "Moorings" ! Moorings or ERA
 /
 
 &forcing_info
+  forcing_dir = "/cluster/projects/nn9878k/hregan/ABL/data",
   repeat_forcing = -1, ! this repeats (-1) the first timestep or (1) the first day of the atmospheric forcing for the whole simulation, or (0) just uses forcing determined by time_info
   use_d2m = 0,        ! this decides whether to use specific humidity directly from q2m, or to compute from d2m (formula from nextsim). ! Always set to 0 - function not working so now reads q2m after using build_q2m_from_d2m_slp.py
   nudge_800 = 1,

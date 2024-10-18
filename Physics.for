@@ -275,7 +275,8 @@ c======================================================================*
 c
 c     In the original model, ug = wind speed and vg = 0
 c     Now updated to make this more explicit
-      wspd = sqrt(ug**2 + vg**2)
+      wspd = MAX(sqrt(ug**2 + vg**2),0.3) ! limit minimum wspd to avoid
+c      crash with grid
 
       f =x*x-(vk*wspd)**2/((alog(x/(fc*z0))-a)**2+b*b)
       df=2.*x+2.*(vk*wspd)**2/((alog(x/(fc*z0))-a)**2+b*b)**2

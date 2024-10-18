@@ -161,7 +161,8 @@ PROGRAM ABL
   INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
   INTEGER :: ds
   INTEGER :: merge_ds, merge_cnt
-  CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name, si_ics_ftype
+  CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
+  CHARACTER(LEN=256) :: si_ics_ftype, seaice_ics_dir, forcing_dir
   REAL :: ha, tint
 !  INTEGER, PARAMETER :: hoursec = 86400
   INTEGER, PARAMETER :: hoursec = 3600
@@ -180,8 +181,8 @@ PROGRAM ABL
   namelist /grid_info/ fname, lon_name, lat_name, mask_name, land_value 
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
-  namelist /seaice_info/ ni, do_si_coupling, do_si_ics, si_ics_ftype 
-  namelist /forcing_info/ repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
+  namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype 
+  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
 
@@ -229,7 +230,6 @@ PROGRAM ABL
 
   print *, "maxval(rlon) = ", maxval(rlon), "minval(rlon) = ", minval(rlon)
   print *, "maxval(rlat) = ", maxval(rlat), "minval(rlat) = ", minval(rlat)
-  print *, "mask ",mask
 
   ! TODO: Time information from namelist
   ! time0 = datetime(2007,01,01)
@@ -296,12 +296,12 @@ PROGRAM ABL
   ! example code for p0
   ! TODO: Read directory name (here "data") from namelist
   ! Initial conditions
-  call p0%init("msl","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t0%init("t2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call p0%init("msl",forcing_dir, rlon, rlat, time0, "ERA")
+  call t0%init("t2m",forcing_dir, rlon, rlat, time0, "ERA")
   if (use_d2m.eq.1) then
-      call d0%init("d2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+      call d0%init("d2m",forcing_dir, rlon, rlat, time0, "ERA")
   else
-      call q0%init("q2m","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+      call q0%init("q2m",forcing_dir, rlon, rlat, time0, "ERA")
   endif
 
 !  hPa(1)=700.
@@ -320,137 +320,137 @@ PROGRAM ABL
   zp = (/ 1000.,975.,950.,925.,900.,875.,850.,825.,800.,775.,750.,700. /)
 
   ! Time dependent forcing
-  call u850_now%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u850_next%init("u850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u850_now%init("u850", forcing_dir, rlon, rlat, time0, "ERA")
+  call u850_next%init("u850", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call v850_now%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v850_next%init("v850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call v850_now%init("v850", forcing_dir, rlon, rlat, time0, "ERA")
+  call v850_next%init("v850", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call t850_now%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t850_next%init("t850", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call t850_now%init("t850", forcing_dir, rlon, rlat, time0, "ERA")
+  call t850_next%init("t850", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u700_now%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u700_next%init("u700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v700_now%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v700_next%init("v700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t700_now%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t700_next%init("t700", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u700_now%init("u700", forcing_dir, rlon, rlat, time0, "ERA")
+  call u700_next%init("u700", forcing_dir, rlon, rlat, time0, "ERA")
+  call v700_now%init("v700", forcing_dir, rlon, rlat, time0, "ERA")
+  call v700_next%init("v700", forcing_dir, rlon, rlat, time0, "ERA")
+  call t700_now%init("t700", forcing_dir, rlon, rlat, time0, "ERA")
+  call t700_next%init("t700", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u750_now%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u750_next%init("u750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v750_now%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v750_next%init("v750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t750_now%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t750_next%init("t750", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u750_now%init("u750", forcing_dir, rlon, rlat, time0, "ERA")
+  call u750_next%init("u750", forcing_dir, rlon, rlat, time0, "ERA")
+  call v750_now%init("v750", forcing_dir, rlon, rlat, time0, "ERA")
+  call v750_next%init("v750", forcing_dir, rlon, rlat, time0, "ERA")
+  call t750_now%init("t750", forcing_dir, rlon, rlat, time0, "ERA")
+  call t750_next%init("t750", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u775_now%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u775_next%init("u775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v775_now%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v775_next%init("v775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t775_now%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t775_next%init("t775", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u775_now%init("u775", forcing_dir, rlon, rlat, time0, "ERA")
+  call u775_next%init("u775", forcing_dir, rlon, rlat, time0, "ERA")
+  call v775_now%init("v775", forcing_dir, rlon, rlat, time0, "ERA")
+  call v775_next%init("v775", forcing_dir, rlon, rlat, time0, "ERA")
+  call t775_now%init("t775", forcing_dir, rlon, rlat, time0, "ERA")
+  call t775_next%init("t775", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u800_now%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u800_next%init("u800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v800_now%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v800_next%init("v800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t800_now%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t800_next%init("t800", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u800_now%init("u800", forcing_dir, rlon, rlat, time0, "ERA")
+  call u800_next%init("u800", forcing_dir, rlon, rlat, time0, "ERA")
+  call v800_now%init("v800", forcing_dir, rlon, rlat, time0, "ERA")
+  call v800_next%init("v800", forcing_dir, rlon, rlat, time0, "ERA")
+  call t800_now%init("t800", forcing_dir, rlon, rlat, time0, "ERA")
+  call t800_next%init("t800", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u825_now%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u825_next%init("u825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v825_now%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v825_next%init("v825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t825_now%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t825_next%init("t825", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u825_now%init("u825", forcing_dir, rlon, rlat, time0, "ERA")
+  call u825_next%init("u825", forcing_dir, rlon, rlat, time0, "ERA")
+  call v825_now%init("v825", forcing_dir, rlon, rlat, time0, "ERA")
+  call v825_next%init("v825", forcing_dir, rlon, rlat, time0, "ERA")
+  call t825_now%init("t825", forcing_dir, rlon, rlat, time0, "ERA")
+  call t825_next%init("t825", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u875_now%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u875_next%init("u875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v875_now%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v875_next%init("v875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t875_now%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t875_next%init("t875", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u875_now%init("u875", forcing_dir, rlon, rlat, time0, "ERA")
+  call u875_next%init("u875", forcing_dir, rlon, rlat, time0, "ERA")
+  call v875_now%init("v875", forcing_dir, rlon, rlat, time0, "ERA")
+  call v875_next%init("v875", forcing_dir, rlon, rlat, time0, "ERA")
+  call t875_now%init("t875", forcing_dir, rlon, rlat, time0, "ERA")
+  call t875_next%init("t875", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u900_now%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u900_next%init("u900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v900_now%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v900_next%init("v900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t900_now%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t900_next%init("t900", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u900_now%init("u900", forcing_dir, rlon, rlat, time0, "ERA")
+  call u900_next%init("u900", forcing_dir, rlon, rlat, time0, "ERA")
+  call v900_now%init("v900", forcing_dir, rlon, rlat, time0, "ERA")
+  call v900_next%init("v900", forcing_dir, rlon, rlat, time0, "ERA")
+  call t900_now%init("t900", forcing_dir, rlon, rlat, time0, "ERA")
+  call t900_next%init("t900", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u925_now%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u925_next%init("u925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v925_now%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v925_next%init("v925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t925_now%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t925_next%init("t925", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u925_now%init("u925", forcing_dir, rlon, rlat, time0, "ERA")
+  call u925_next%init("u925", forcing_dir, rlon, rlat, time0, "ERA")
+  call v925_now%init("v925", forcing_dir, rlon, rlat, time0, "ERA")
+  call v925_next%init("v925", forcing_dir, rlon, rlat, time0, "ERA")
+  call t925_now%init("t925", forcing_dir, rlon, rlat, time0, "ERA")
+  call t925_next%init("t925", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u950_now%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u950_next%init("u950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v950_now%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v950_next%init("v950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t950_now%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t950_next%init("t950", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u950_now%init("u950", forcing_dir, rlon, rlat, time0, "ERA")
+  call u950_next%init("u950", forcing_dir, rlon, rlat, time0, "ERA")
+  call v950_now%init("v950", forcing_dir, rlon, rlat, time0, "ERA")
+  call v950_next%init("v950", forcing_dir, rlon, rlat, time0, "ERA")
+  call t950_now%init("t950", forcing_dir, rlon, rlat, time0, "ERA")
+  call t950_next%init("t950", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u975_now%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u975_next%init("u975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v975_now%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v975_next%init("v975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t975_now%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t975_next%init("t975", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u975_now%init("u975", forcing_dir, rlon, rlat, time0, "ERA")
+  call u975_next%init("u975", forcing_dir, rlon, rlat, time0, "ERA")
+  call v975_now%init("v975", forcing_dir, rlon, rlat, time0, "ERA")
+  call v975_next%init("v975", forcing_dir, rlon, rlat, time0, "ERA")
+  call t975_now%init("t975", forcing_dir, rlon, rlat, time0, "ERA")
+  call t975_next%init("t975", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call u1000_now%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call u1000_next%init("u1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v1000_now%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call v1000_next%init("v1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t1000_now%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call t1000_next%init("t1000", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call u1000_now%init("u1000", forcing_dir, rlon, rlat, time0, "ERA")
+  call u1000_next%init("u1000", forcing_dir, rlon, rlat, time0, "ERA")
+  call v1000_now%init("v1000", forcing_dir, rlon, rlat, time0, "ERA")
+  call v1000_next%init("v1000", forcing_dir, rlon, rlat, time0, "ERA")
+  call t1000_now%init("t1000", forcing_dir, rlon, rlat, time0, "ERA")
+  call t1000_next%init("t1000", forcing_dir, rlon, rlat, time0, "ERA")
 
   !! Added by HCR
-  call sdlw_now%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call sdlw_next%init("msdwlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call sdlw_now%init("msdwlwrf", forcing_dir, rlon, rlat, time0, "ERA")
+  call sdlw_next%init("msdwlwrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call sdsw_now%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call sdsw_next%init("msdwswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call sdsw_now%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
+  call sdsw_next%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call ntlw_now%init("msnlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call ntlw_next%init("msnlwrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call ntlw_now%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
+  call ntlw_next%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call ntsw_now%init("msnswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call ntsw_next%init("msnswrf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call ntsw_now%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
+  call ntsw_next%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call mslhf_now%init("mslhf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call mslhf_next%init("mslhf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call mslhf_now%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
+  call mslhf_next%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call msshf_now%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
-  call msshf_next%init("msshf", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+  call msshf_now%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
+  call msshf_next%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call sic_now%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call sit_now%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call snt_now%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call sic_next%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call sit_next%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call snt_next%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sic_now%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call sit_now%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call snt_now%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call sic_next%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call sit_next%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call snt_next%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
 
-  call sst_now%init("sst","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
-  call sst_next%init("sst","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+  call sst_now%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  call sst_next%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
 
   if (do_si_ics.eq.2) then
       if (si_ics_ftype=="Moorings") then
-          call sic_init%init("sic","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sic_init%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sic_init%read_input(time0, "Moorings")
-          call sit_init%init("sit","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sit_init%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sit_init%read_input(time0, "Moorings")
-          call snt_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call snt_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call snt_init%read_input(time0, "Moorings")
-          call sic2_init%init("sic_young","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sic2_init%init("sic_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sic2_init%read_input(time0, "Moorings")
-          call sit2_init%init("sit_young","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call sit2_init%init("sit_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sit2_init%read_input(time0, "Moorings")
-          call snt2_init%init("snt","/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0,"Moorings")
+          call snt2_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call snt2_init%read_input(time0, "Moorings")
       else
-          call sic_init%init("siconc", "/cluster/projects/nn9878k/hregan/ABL/data", rlon, rlat, time0, "ERA")
+          call sic_init%init("siconc", seaice_ics_dir, rlon, rlat, time0, "ERA")
           call sic_init%read_input(time0, "ERA")
           ! WHAT TO DO FOR SNOW???
       endif
@@ -755,6 +755,7 @@ PROGRAM ABL
           else
               q0_val = q0%get_point(m,n)
           endif
+          ! print *, "values into init ",ice_snow_thick(m,n,n_si),n_si
           call Initialize_NeXtSIM_ABL( &
             albedo(m,n,n_si),                                                    & ! Internal or from coupler?
             u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file

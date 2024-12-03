@@ -422,7 +422,7 @@ c---------Converting temperature to potential temperature
         do j=1,nj
           theta(j)=t(j)*(p(1)/p(j))**(rgas/cp)
         enddo
-          q(1)=0.01                             ! specified constant ground wetness to q(1)
+          ! q(1)=0.01                             ! specified constant ground wetness to q(1)
 c          print *, "theta 1 and 2 ",theta(1),theta(2)
 
 c---------Calculating surface fluxes using Monin-Obukhov similarity

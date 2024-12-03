@@ -84,14 +84,14 @@ PROGRAM ABL
   ! Inputs from forcing files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First are nudging values at 850 hPA
-  TYPE(input_var) :: u850_now,v850_now,t850_now,sdlw_now,sdsw_now
+  TYPE(input_var) :: u850_now,v850_now,t850_now,sdlw_now,sdsw_now, q2m_now, d2m_now
 !  TYPE(input_var) :: ntlw_now,ntsw_now,mslhf_now,msshf_now
-  TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
+  TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next, q2m_next, d2m_next
 !  TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
   TYPE(input_var) :: sst_now,sst_next
   TYPE(input_var) :: sic_init, sit_init, snt_init, sic2_init, sit2_init, snt2_init ! Currently from nextsim or ERA5
-  REAL :: u850, v850, t850, sdlw, sdsw !, ntlw, ntsw,mslhf,msshf
+  REAL :: u850, v850, t850, sdlw, sdsw, q2m, q1, q2 !, ntlw, ntsw,mslhf,msshf
   REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
   REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf, sst !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
@@ -149,7 +149,7 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_800, read_sst
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_800, read_sst
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -182,7 +182,7 @@ PROGRAM ABL
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
-  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
+  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_800 !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
 
@@ -408,6 +408,14 @@ PROGRAM ABL
 
   call sdsw_now%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
   call sdsw_next%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
+
+  if (use_d2m.eq.1) then
+      call d2m_now%init("d2m", forcing_dir, rlon, rlat, time0, "ERA")
+      call d2m_next%init("d2m", forcing_dir, rlon, rlat, time0, "ERA")
+  else
+      call q2m_now%init("q2m", forcing_dir, rlon, rlat, time0, "ERA")
+      call q2m_next%init("q2m", forcing_dir, rlon, rlat, time0, "ERA")
+  endif
 
   call sic_now%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sit_now%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -895,14 +903,16 @@ PROGRAM ABL
 
 !$OMP PARALLEL DEFAULT (SHARED) &
 ! $OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
-!$OMP& PRIVATE(tint, sdlw, sdsw) &
+!$OMP& PRIVATE(tint, sdlw, sdsw, q2m) &
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
 !$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
 !$OMP& FIRSTPRIVATE(time, merge_cnt, loaded_already)
 
+  print *, "about to start"
   do while ( time <= time1 )
+    print *, "starting"
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
     do jh = 1, 24
@@ -926,20 +936,33 @@ PROGRAM ABL
       endif
       ! If repeat timestep forcing, only need to do this once...
       if (loaded_already.eq.0) then
+          print *, "loading ERA t850"
           call t850_now%read_input(ERA_time, "ERA")
           call u850_now%read_input(ERA_time, "ERA")
           call v850_now%read_input(ERA_time, "ERA")
           call sdlw_now%read_input(ERA_time, "ERA")
           call sdsw_now%read_input(ERA_time, "ERA")
+          if (use_d2m.eq.1) then
+              call d2m_now%read_input(ERA_time, "ERA")
+          else
+              call q2m_now%read_input(ERA_time, "ERA")
+          endif
     !      call sic_now%read_input(time, "Moorings")
     !      call sit_now%read_input(time, "Moorings")
     !      call snt_now%read_input(time, "Moorings")
     
+          print *, "loading ERA t850 next"
           call t850_next%read_input(next_time, "ERA")
           call u850_next%read_input(next_time, "ERA")
           call v850_next%read_input(next_time, "ERA")
           call sdlw_next%read_input(next_time, "ERA")
           call sdsw_next%read_input(next_time, "ERA")
+          if (use_d2m.eq.1) then
+              call d2m_next%read_input(next_time, "ERA")
+          else
+              call q2m_next%read_input(next_time, "ERA")
+          endif
+          print *, "done"
     !      call sic_next%read_input(next_time, "Moorings")
     !      call sit_next%read_input(next_time, "Moorings")
     !      call snt_next%read_input(next_time, "Moorings")
@@ -1047,6 +1070,13 @@ PROGRAM ABL
             tint = real(jm-1)/real(nmts)
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
+            if (use_d2m.eq.1) then
+              call SpecHum_from_d2m(d2m_now%get_point(m,n), p_each_cat(m,n,1,1), q1)
+              call SpecHum_from_d2m(d2m_next%get_point(m,n), p_each_cat(m,n,1,1), q2)
+              q2m = hourint(tint, q1, q2)
+            else
+              q2m = hourint(tint, q2m_now%get_point(m,n), q2m_next%get_point(m,n))
+            endif
 
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
@@ -1168,10 +1198,15 @@ PROGRAM ABL
                 v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
                 v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
                 v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
-                print *, "loaded nudging vars ",m,n
+                ! print *, "loaded nudging vars ",m,n
             endif
 
             do n_si = 1, ncat
+
+                ! Update first q level with that from ERA5
+                if (nudge_q2m.eq.1) then
+                    q_each_cat(m,n,1,n_si) = q2m
+                endif
 
                 !!!!!! INITIALISE SEA ICE GRID !!!!!
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 

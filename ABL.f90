@@ -85,13 +85,13 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! First are nudging values at 850 hPA
   TYPE(input_var) :: u850_now,v850_now,t850_now,sdlw_now,sdsw_now
-  TYPE(input_var) :: ntlw_now,ntsw_now,mslhf_now,msshf_now
+!  TYPE(input_var) :: ntlw_now,ntsw_now,mslhf_now,msshf_now
   TYPE(input_var) :: u850_next,v850_next,t850_next,sdlw_next,sdsw_next
-  TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
+!  TYPE(input_var) :: ntlw_next,ntsw_next,mslhf_next,msshf_next
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
   TYPE(input_var) :: sst_now,sst_next
   TYPE(input_var) :: sic_init, sit_init, snt_init, sic2_init, sit2_init, snt2_init ! Currently from nextsim or ERA5
-  REAL :: u850, v850, t850, sdlw, sdsw, ntlw, ntsw,mslhf,msshf
+  REAL :: u850, v850, t850, sdlw, sdsw !, ntlw, ntsw,mslhf,msshf
   REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
   REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf, sst !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
@@ -127,7 +127,7 @@ PROGRAM ABL
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: gflux, lw_net, sw_net, h0, e0
   REAL, DIMENSION(nplev) :: zp 
 
-  INTEGER :: repeat_forcing
+  INTEGER :: repeat_forcing, loaded_already, mooring_or_superice
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -149,7 +149,7 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_800
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_800, read_sst
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -181,7 +181,7 @@ PROGRAM ABL
   namelist /grid_info/ fname, lon_name, lat_name, mask_name, land_value 
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
-  namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype 
+  namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
   namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_800 !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
@@ -413,17 +413,17 @@ PROGRAM ABL
   call sdsw_now%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
   call sdsw_next%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call ntlw_now%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
-  call ntlw_next%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call ntlw_now%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call ntlw_next%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call ntsw_now%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
-  call ntsw_next%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call ntsw_now%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call ntsw_next%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call mslhf_now%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
-  call mslhf_next%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call mslhf_now%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call mslhf_next%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
 
-  call msshf_now%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
-  call msshf_next%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call msshf_now%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
+!  call msshf_next%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
 
   call sic_now%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sit_now%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -435,20 +435,30 @@ PROGRAM ABL
   call sst_now%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sst_next%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
 
+  if (si_ics_ftype == "Moorings") then
+      mooring_or_superice = 1
+  elseif (si_ics_ftype == "Superice") then
+      mooring_or_superice = 1
+  else
+      mooring_or_superice = 0
+  endif
+   
   if (do_si_ics.eq.2) then
-      if (si_ics_ftype=="Moorings") then
+      if ( mooring_or_superice.eq.1 ) then
           call sic_init%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sic_init%read_input(time0, "Moorings")
           call sit_init%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sit_init%read_input(time0, "Moorings")
           call snt_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call snt_init%read_input(time0, "Moorings")
-          call sic2_init%init("sic_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
-          call sic2_init%read_input(time0, "Moorings")
-          call sit2_init%init("sit_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
-          call sit2_init%read_input(time0, "Moorings")
-          call snt2_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
-          call snt2_init%read_input(time0, "Moorings")
+          if (n_surf_cat.gt.2) then
+              call sic2_init%init("sic_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+              call sic2_init%read_input(time0, "Moorings")
+              call sit2_init%init("sit_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+              call sit2_init%read_input(time0, "Moorings")
+              call snt2_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+              call snt2_init%read_input(time0, "Moorings")
+          endif
       else
           call sic_init%init("siconc", seaice_ics_dir, rlon, rlat, time0, "ERA")
           call sic_init%read_input(time0, "ERA")
@@ -467,7 +477,9 @@ PROGRAM ABL
   print *, "read_input some a2"
   call snt_now%read_input(time0, "Moorings")
   print *, "read_input some a3"
-  call sst_now%read_input(time0, "Moorings")
+  if (read_sst.eq.1) then
+      call sst_now%read_input(time0, "Moorings")
+  endif
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
@@ -587,22 +599,42 @@ PROGRAM ABL
         ! Now for the sea ice categories
         sic(m,n,1) = sic_init%get_point(m,n)
         !print *, "ICs 0 ",sic(m,n,1)
-        ! First, check that the sea ice concentration is between zero and one. If not, it is land and we don't compute it      
+        ! First, check that the sea ice concentration is between zero and one (i.e. a value). 
+        ! Hack to allow for weird values in smoothing... ONLY FOR NOW!
+        if (si_ics_ftype=="Superice") then
+          print *, "adjusting sic in case it is out of range: this is for SuperIce only..."
+          if ( (sic(m,n,1).lt.0) .AND. (sic(m,n,1).gt.-1) ) then
+            sic(m,n,1) = 0
+          elseif ( (sic(m,n,1).gt.1) .AND. (sic(m,n,1).lt.2) ) then
+            sic(m,n,1) = 1
+          endif
+        endif
+        ! scaling. If not, it is land and we don't compute it      
         if ( (sic(m,n,1).ge.0) .AND. (sic(m,n,1).le.1)) then       
-          if (si_ics_ftype=="Moorings") then
-            sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K 
+          if ( mooring_or_superice.eq.1 ) then
+            if (read_sst.eq.1) then
+                sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K 
+            else
+                sst(m,n) = 271.15 !set to freezing point
+            endif
             ! Situation 1: one category of sea ice, one of open water
             if (ncat.lt.3) then ! does this apply to one category too? Shouldn't only have ice, there's always an open water
                 ! option... but if we want to do the merged category by only running one category, we still treat nextsim input like
                 ! this
                 if (sic(m,n,1).gt.0) then
-                    sit(m,n,1) = sit_init%get_point(m,n)/sic_init%get_point(m,n)
-                    snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n)
+                    if (si_ics_ftype=="Superice") then
+                      sit(m,n,1) = sit_init%get_point(m,n)
+                      snt(m,n,1) = snt_init%get_point(m,n)
+                    else
+                      sit(m,n,1) = sit_init%get_point(m,n)/sic_init%get_point(m,n)
+                      snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n)
+                    endif
                 else
                     sit(m,n,1) = 0.
                     snt(m,n,1) = 0.
                 endif
                 ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
+                sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
             elseif (ncat.gt.2) then
                 !print *, "ICs cats"
                 sic(m,n,2) = sic2_init%get_point(m,n)
@@ -610,18 +642,14 @@ PROGRAM ABL
                 if (sic(m,n,1).gt.0) then
                     ! nextsim-specific handling where divide by sic
                     ! For thick category:
-                    if (sic(m,n,2).lt.sic(m,n,1)) then ! there is some thick ice (sic(m,n,1) = thick ice plus thin ice remember)
-                        !print *, "ICs cats 1, sit ",sit_init%get_point(m,n)-sit2_init%get_point(m,n),sic(m,n,1) - sic(m,n,2)
-                        !print *, "ICs cats 1a, sit ",sit_init%get_point(m,n)
-                        sit(m,n,1)=(sit_init%get_point(m,n)-sit2_init%get_point(m,n))/(sic(m,n,1) - sic(m,n,2))
-                        snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
-                        ! open water conc
-                        sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
-                    else ! there is no thick ice
-                        !print *, "ICs cats 2"
-                        sit(m,n,1) = 0.
-                        snt(m,n,1) = 0.
-                    endif
+                    sit(m,n,1)=(sit_init%get_point(m,n)-sit2_init%get_point(m,n))/(sic_init%get_point(m,n) - sic2_init%get_point(m,n))
+                    snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
+                    ! open water conc
+                    sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
+                else ! there is no thick ice
+                    !print *, "ICs cats 2"
+                    sit(m,n,1) = 0.
+                    snt(m,n,1) = 0.
                 endif
                 if (sic(m,n,2).gt.0) then ! there is young (thin) ice
                     !print *, "ICs cats 3, sit ",sit2_init%get_point(m,n),sic2_init%get_point(m,n)
@@ -929,11 +957,13 @@ PROGRAM ABL
   call srfv_balance%add_var("sw_net2")
   call srfv_balance%add_var("h02")
   call srfv_balance%add_var("e02")
-  call srfv_balance%add_var("gflux3")
-  call srfv_balance%add_var("lw_net3")
-  call srfv_balance%add_var("sw_net3")
-  call srfv_balance%add_var("h03")
-  call srfv_balance%add_var("e03")
+  if (ncat.gt.2) then
+    call srfv_balance%add_var("gflux3")
+    call srfv_balance%add_var("lw_net3")
+    call srfv_balance%add_var("sw_net3")
+    call srfv_balance%add_var("h03")
+    call srfv_balance%add_var("e03")
+  endif
 !  print *, "Initialised srfv balance "
 
   call ice_layers%init('ice_layers.nc', mgr, ngr, mask, rlon, rlat, nz=ni)
@@ -1057,17 +1087,24 @@ PROGRAM ABL
       ERA_time = time    
       next_time = time + timedelta(hours=1)
   endif
-  call sic_next%read_input(next_time, "Moorings")
-  call sit_next%read_input(next_time, "Moorings")
-  call snt_next%read_input(next_time, "Moorings")
+  !print *, "reading in next si"
+  !call sic_next%read_input(next_time, "Moorings")
+  !call sit_next%read_input(next_time, "Moorings")
+  !call snt_next%read_input(next_time, "Moorings")
+
+  print *, "initialising done: starting main loop"
+  
+  loaded_already = 0
 
 !$OMP PARALLEL DEFAULT (SHARED) &
-!$OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
+! $OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
+!$OMP& PRIVATE(tint, sdlw, sdsw) &
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
 !$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
-!$OMP& FIRSTPRIVATE(time, merge_cnt)
+!$OMP& FIRSTPRIVATE(time, merge_cnt, loaded_already)
+
   do while ( time <= time1 )
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
@@ -1090,108 +1127,111 @@ PROGRAM ABL
           ERA_time = time    
           next_time = time + timedelta(hours=1)
       endif
-      call t850_now%read_input(ERA_time, "ERA")
-      call u850_now%read_input(ERA_time, "ERA")
-      call v850_now%read_input(ERA_time, "ERA")
-      call sdlw_now%read_input(ERA_time, "ERA")
-      call sdsw_now%read_input(ERA_time, "ERA")
-      call ntlw_now%read_input(ERA_time, "ERA")
-      call ntsw_now%read_input(ERA_time, "ERA")
-      call mslhf_now%read_input(ERA_time, "ERA")
-      call msshf_now%read_input(ERA_time, "ERA")
-!      call sic_now%read_input(time, "Moorings")
-!      call sit_now%read_input(time, "Moorings")
-!      call snt_now%read_input(time, "Moorings")
-
-      call t850_next%read_input(next_time, "ERA")
-      call u850_next%read_input(next_time, "ERA")
-      call v850_next%read_input(next_time, "ERA")
-      call sdlw_next%read_input(next_time, "ERA")
-      call sdsw_next%read_input(next_time, "ERA")
-      call ntlw_next%read_input(next_time, "ERA")
-      call ntsw_next%read_input(next_time, "ERA")
-      call mslhf_next%read_input(next_time, "ERA")
-      call msshf_next%read_input(next_time, "ERA")
-!      call sic_next%read_input(next_time, "Moorings")
-!      call sit_next%read_input(next_time, "Moorings")
-!      call snt_next%read_input(next_time, "Moorings")
-
-      call t700_now%read_input(ERA_time, "ERA")
-      call u700_now%read_input(ERA_time, "ERA")
-      call v700_now%read_input(ERA_time, "ERA")
-      call t700_next%read_input(next_time, "ERA")
-      call u700_next%read_input(next_time, "ERA")
-      call v700_next%read_input(next_time, "ERA")
-
-      call t750_now%read_input(ERA_time, "ERA")
-      call u750_now%read_input(ERA_time, "ERA")
-      call v750_now%read_input(ERA_time, "ERA")
-      call t750_next%read_input(next_time, "ERA")
-      call u750_next%read_input(next_time, "ERA")
-      call v750_next%read_input(next_time, "ERA")
-
-      call t775_now%read_input(ERA_time, "ERA")
-      call u775_now%read_input(ERA_time, "ERA")
-      call v775_now%read_input(ERA_time, "ERA")
-      call t775_next%read_input(next_time, "ERA")
-      call u775_next%read_input(next_time, "ERA")
-      call v775_next%read_input(next_time, "ERA")
-
-      call t800_now%read_input(ERA_time, "ERA")
-      call u800_now%read_input(ERA_time, "ERA")
-      call v800_now%read_input(ERA_time, "ERA")
-      call t800_next%read_input(next_time, "ERA")
-      call u800_next%read_input(next_time, "ERA")
-      call v800_next%read_input(next_time, "ERA")
-
-      call t825_now%read_input(ERA_time, "ERA")
-      call u825_now%read_input(ERA_time, "ERA")
-      call v825_now%read_input(ERA_time, "ERA")
-      call t825_next%read_input(next_time, "ERA")
-      call u825_next%read_input(next_time, "ERA")
-      call v825_next%read_input(next_time, "ERA")
-
-      call t875_now%read_input(ERA_time, "ERA")
-      call u875_now%read_input(ERA_time, "ERA")
-      call v875_now%read_input(ERA_time, "ERA")
-      call t875_next%read_input(next_time, "ERA")
-      call u875_next%read_input(next_time, "ERA")
-      call v875_next%read_input(next_time, "ERA")
-
-      call t900_now%read_input(ERA_time, "ERA")
-      call u900_now%read_input(ERA_time, "ERA")
-      call v900_now%read_input(ERA_time, "ERA")
-      call t900_next%read_input(next_time, "ERA")
-      call u900_next%read_input(next_time, "ERA")
-      call v900_next%read_input(next_time, "ERA")
-
-      call t925_now%read_input(ERA_time, "ERA")
-      call u925_now%read_input(ERA_time, "ERA")
-      call v925_now%read_input(ERA_time, "ERA")
-      call t925_next%read_input(next_time, "ERA")
-      call u925_next%read_input(next_time, "ERA")
-      call v925_next%read_input(next_time, "ERA")
-
-      call t950_now%read_input(ERA_time, "ERA")
-      call u950_now%read_input(ERA_time, "ERA")
-      call v950_now%read_input(ERA_time, "ERA")
-      call t950_next%read_input(next_time, "ERA")
-      call u950_next%read_input(next_time, "ERA")
-      call v950_next%read_input(next_time, "ERA")
-
-      call t975_now%read_input(ERA_time, "ERA")
-      call u975_now%read_input(ERA_time, "ERA")
-      call v975_now%read_input(ERA_time, "ERA")
-      call t975_next%read_input(next_time, "ERA")
-      call u975_next%read_input(next_time, "ERA")
-      call v975_next%read_input(next_time, "ERA")
-
-      call t1000_now%read_input(ERA_time, "ERA")
-      call u1000_now%read_input(ERA_time, "ERA")
-      call v1000_now%read_input(ERA_time, "ERA")
-      call t1000_next%read_input(next_time, "ERA")
-      call u1000_next%read_input(next_time, "ERA")
-      call v1000_next%read_input(next_time, "ERA")
+      ! If repeat timestep forcing, only need to do this once...
+      if (loaded_already.eq.0) then
+          call t850_now%read_input(ERA_time, "ERA")
+          call u850_now%read_input(ERA_time, "ERA")
+          call v850_now%read_input(ERA_time, "ERA")
+          call sdlw_now%read_input(ERA_time, "ERA")
+          call sdsw_now%read_input(ERA_time, "ERA")
+          ! call ntlw_now%read_input(ERA_time, "ERA")
+          ! call ntsw_now%read_input(ERA_time, "ERA")
+          ! call mslhf_now%read_input(ERA_time, "ERA")
+          ! call msshf_now%read_input(ERA_time, "ERA")
+    !      call sic_now%read_input(time, "Moorings")
+    !      call sit_now%read_input(time, "Moorings")
+    !      call snt_now%read_input(time, "Moorings")
+    
+          call t850_next%read_input(next_time, "ERA")
+          call u850_next%read_input(next_time, "ERA")
+          call v850_next%read_input(next_time, "ERA")
+          call sdlw_next%read_input(next_time, "ERA")
+          call sdsw_next%read_input(next_time, "ERA")
+          ! call ntlw_next%read_input(next_time, "ERA")
+          ! call ntsw_next%read_input(next_time, "ERA")
+          ! call mslhf_next%read_input(next_time, "ERA")
+          ! call msshf_next%read_input(next_time, "ERA")
+    !      call sic_next%read_input(next_time, "Moorings")
+    !      call sit_next%read_input(next_time, "Moorings")
+    !      call snt_next%read_input(next_time, "Moorings")
+    
+          call t700_now%read_input(ERA_time, "ERA")
+          call u700_now%read_input(ERA_time, "ERA")
+          call v700_now%read_input(ERA_time, "ERA")
+          call t700_next%read_input(next_time, "ERA")
+          call u700_next%read_input(next_time, "ERA")
+          call v700_next%read_input(next_time, "ERA")
+    
+          call t750_now%read_input(ERA_time, "ERA")
+          call u750_now%read_input(ERA_time, "ERA")
+          call v750_now%read_input(ERA_time, "ERA")
+          call t750_next%read_input(next_time, "ERA")
+          call u750_next%read_input(next_time, "ERA")
+          call v750_next%read_input(next_time, "ERA")
+    
+          call t775_now%read_input(ERA_time, "ERA")
+          call u775_now%read_input(ERA_time, "ERA")
+          call v775_now%read_input(ERA_time, "ERA")
+          call t775_next%read_input(next_time, "ERA")
+          call u775_next%read_input(next_time, "ERA")
+          call v775_next%read_input(next_time, "ERA")
+    
+          call t800_now%read_input(ERA_time, "ERA")
+          call u800_now%read_input(ERA_time, "ERA")
+          call v800_now%read_input(ERA_time, "ERA")
+          call t800_next%read_input(next_time, "ERA")
+          call u800_next%read_input(next_time, "ERA")
+          call v800_next%read_input(next_time, "ERA")
+    
+          call t825_now%read_input(ERA_time, "ERA")
+          call u825_now%read_input(ERA_time, "ERA")
+          call v825_now%read_input(ERA_time, "ERA")
+          call t825_next%read_input(next_time, "ERA")
+          call u825_next%read_input(next_time, "ERA")
+          call v825_next%read_input(next_time, "ERA")
+    
+          call t875_now%read_input(ERA_time, "ERA")
+          call u875_now%read_input(ERA_time, "ERA")
+          call v875_now%read_input(ERA_time, "ERA")
+          call t875_next%read_input(next_time, "ERA")
+          call u875_next%read_input(next_time, "ERA")
+          call v875_next%read_input(next_time, "ERA")
+    
+          call t900_now%read_input(ERA_time, "ERA")
+          call u900_now%read_input(ERA_time, "ERA")
+          call v900_now%read_input(ERA_time, "ERA")
+          call t900_next%read_input(next_time, "ERA")
+          call u900_next%read_input(next_time, "ERA")
+          call v900_next%read_input(next_time, "ERA")
+    
+          call t925_now%read_input(ERA_time, "ERA")
+          call u925_now%read_input(ERA_time, "ERA")
+          call v925_now%read_input(ERA_time, "ERA")
+          call t925_next%read_input(next_time, "ERA")
+          call u925_next%read_input(next_time, "ERA")
+          call v925_next%read_input(next_time, "ERA")
+    
+          call t950_now%read_input(ERA_time, "ERA")
+          call u950_now%read_input(ERA_time, "ERA")
+          call v950_now%read_input(ERA_time, "ERA")
+          call t950_next%read_input(next_time, "ERA")
+          call u950_next%read_input(next_time, "ERA")
+          call v950_next%read_input(next_time, "ERA")
+    
+          call t975_now%read_input(ERA_time, "ERA")
+          call u975_now%read_input(ERA_time, "ERA")
+          call v975_now%read_input(ERA_time, "ERA")
+          call t975_next%read_input(next_time, "ERA")
+          call u975_next%read_input(next_time, "ERA")
+          call v975_next%read_input(next_time, "ERA")
+    
+          call t1000_now%read_input(ERA_time, "ERA")
+          call u1000_now%read_input(ERA_time, "ERA")
+          call v1000_now%read_input(ERA_time, "ERA")
+          call t1000_next%read_input(next_time, "ERA")
+          call u1000_next%read_input(next_time, "ERA")
+          call v1000_next%read_input(next_time, "ERA")
+      endif
 
 !$OMP END MASTER
 !$OMP BARRIER
@@ -1219,11 +1259,10 @@ PROGRAM ABL
             tint = real(jm-1)/real(nmts)
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
-            ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
-            ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
-            mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
-            msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
-
+            ! ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
+            ! ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
+            ! mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
+            ! msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
 !            if (m.eq.1) then
 !                if (n.eq.1) then
 !                    print *, "WHY time ",jd,jh,jm,",tint",tint
@@ -1254,112 +1293,114 @@ PROGRAM ABL
 !            enddo
 
             !print *, "get hPa levels"
-            t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
-            if (t700_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,12) = -999.
-            elseif (t700_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,12) = -999.
+            if (loaded_already.eq.0) then
+                t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
+                if (t700_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,12) = -999.
+                elseif (t700_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,12) = -999.
+                endif
+                t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
+                if (t750_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,11) = -999.
+                elseif (t750_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,11) = -999.
+                endif
+                t_hPa(m,n,10) = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
+                if (t775_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,10) = -999.
+                elseif (t775_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,10) = -999.
+                endif
+                t_hPa(m,n,9) = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
+                if (t800_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,9) = -999.
+                elseif (t800_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,9) = -999.
+                endif
+                t_hPa(m,n,8) = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
+                if (t825_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,8) = -999.
+                elseif (t825_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,8) = -999.
+                endif
+                t_hPa(m,n,7) = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
+                if (t850_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,7) = -999.
+                elseif (t850_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,7) = -999.
+                endif
+                t_hPa(m,n,6) = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
+                if (t875_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,6) = -999.
+                elseif (t875_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,6) = -999.
+                endif
+                t_hPa(m,n,5) = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
+                if (t900_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,5) = -999.
+                elseif (t900_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,5) = -999.
+                endif
+                t_hPa(m,n,4) = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
+                if (t925_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,4) = -999.
+                elseif (t925_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,4) = -999.
+                endif
+                t_hPa(m,n,3) = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
+                if (t950_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,3) = -999.
+                elseif (t950_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,3) = -999.
+                endif
+                t_hPa(m,n,2) = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
+                if (t975_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,2) = -999.
+                elseif (t975_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,2) = -999.
+                endif
+                t_hPa(m,n,1) = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
+                if (t1000_now%get_point(m,n).lt.0) then
+                  t_hPa(m,n,1) = -999.
+                elseif (t1000_next%get_point(m,n).lt.0) then
+                  t_hPa(m,n,1) = -999.
+                endif
+      
+                u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
+                u_hPa(m,n,11) = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
+                u_hPa(m,n,10) = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
+                u_hPa(m,n,9) = hourint(tint, u800_now%get_point(m,n), u800_next%get_point(m,n))
+                u_hPa(m,n,8) = hourint(tint, u825_now%get_point(m,n), u825_next%get_point(m,n))
+                u_hPa(m,n,7) = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
+                u_hPa(m,n,6) = hourint(tint, u875_now%get_point(m,n), u875_next%get_point(m,n))
+                u_hPa(m,n,5) = hourint(tint, u900_now%get_point(m,n), u900_next%get_point(m,n))
+                u_hPa(m,n,4) = hourint(tint, u925_now%get_point(m,n), u925_next%get_point(m,n))
+                u_hPa(m,n,3) = hourint(tint, u950_now%get_point(m,n), u950_next%get_point(m,n))
+                u_hPa(m,n,2) = hourint(tint, u975_now%get_point(m,n), u975_next%get_point(m,n))
+                u_hPa(m,n,1) = hourint(tint, u1000_now%get_point(m,n), u1000_next%get_point(m,n))
+    
+                v_hPa(m,n,12) = hourint(tint, v700_now%get_point(m,n), v700_next%get_point(m,n))
+                v_hPa(m,n,11) = hourint(tint, v750_now%get_point(m,n), v750_next%get_point(m,n))
+                v_hPa(m,n,10) = hourint(tint, v775_now%get_point(m,n), v775_next%get_point(m,n))
+                v_hPa(m,n,9) = hourint(tint, v800_now%get_point(m,n), v800_next%get_point(m,n))
+                v_hPa(m,n,8) = hourint(tint, v825_now%get_point(m,n), v825_next%get_point(m,n))
+                v_hPa(m,n,7) = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
+                v_hPa(m,n,6) = hourint(tint, v875_now%get_point(m,n), v875_next%get_point(m,n))
+                v_hPa(m,n,5) = hourint(tint, v900_now%get_point(m,n), v900_next%get_point(m,n))
+                v_hPa(m,n,4) = hourint(tint, v925_now%get_point(m,n), v925_next%get_point(m,n))
+                v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
+                v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
+                v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
+                print *, "loaded nudging vars ",m,n
             endif
-            t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
-            if (t750_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,11) = -999.
-            elseif (t750_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,11) = -999.
-            endif
-            t_hPa(m,n,10) = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
-            if (t775_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,10) = -999.
-            elseif (t775_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,10) = -999.
-            endif
-            t_hPa(m,n,9) = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
-            if (t800_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,9) = -999.
-            elseif (t800_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,9) = -999.
-            endif
-            t_hPa(m,n,8) = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
-            if (t825_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,8) = -999.
-            elseif (t825_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,8) = -999.
-            endif
-            t_hPa(m,n,7) = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
-            if (t850_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,7) = -999.
-            elseif (t850_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,7) = -999.
-            endif
-            t_hPa(m,n,6) = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
-            if (t875_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,6) = -999.
-            elseif (t875_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,6) = -999.
-            endif
-            t_hPa(m,n,5) = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
-            if (t900_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,5) = -999.
-            elseif (t900_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,5) = -999.
-            endif
-            t_hPa(m,n,4) = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
-            if (t925_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,4) = -999.
-            elseif (t925_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,4) = -999.
-            endif
-            t_hPa(m,n,3) = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
-            if (t950_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,3) = -999.
-            elseif (t950_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,3) = -999.
-            endif
-            t_hPa(m,n,2) = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
-            if (t975_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,2) = -999.
-            elseif (t975_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,2) = -999.
-            endif
-            t_hPa(m,n,1) = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
-            if (t1000_now%get_point(m,n).lt.0) then
-              t_hPa(m,n,1) = -999.
-            elseif (t1000_next%get_point(m,n).lt.0) then
-              t_hPa(m,n,1) = -999.
-            endif
-  
-            u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
-            u_hPa(m,n,11) = hourint(tint, u750_now%get_point(m,n), u750_next%get_point(m,n))
-            u_hPa(m,n,10) = hourint(tint, u775_now%get_point(m,n), u775_next%get_point(m,n))
-            u_hPa(m,n,9) = hourint(tint, u800_now%get_point(m,n), u800_next%get_point(m,n))
-            u_hPa(m,n,8) = hourint(tint, u825_now%get_point(m,n), u825_next%get_point(m,n))
-            u_hPa(m,n,7) = hourint(tint, u850_now%get_point(m,n), u850_next%get_point(m,n))
-            u_hPa(m,n,6) = hourint(tint, u875_now%get_point(m,n), u875_next%get_point(m,n))
-            u_hPa(m,n,5) = hourint(tint, u900_now%get_point(m,n), u900_next%get_point(m,n))
-            u_hPa(m,n,4) = hourint(tint, u925_now%get_point(m,n), u925_next%get_point(m,n))
-            u_hPa(m,n,3) = hourint(tint, u950_now%get_point(m,n), u950_next%get_point(m,n))
-            u_hPa(m,n,2) = hourint(tint, u975_now%get_point(m,n), u975_next%get_point(m,n))
-            u_hPa(m,n,1) = hourint(tint, u1000_now%get_point(m,n), u1000_next%get_point(m,n))
-
-            v_hPa(m,n,12) = hourint(tint, v700_now%get_point(m,n), v700_next%get_point(m,n))
-            v_hPa(m,n,11) = hourint(tint, v750_now%get_point(m,n), v750_next%get_point(m,n))
-            v_hPa(m,n,10) = hourint(tint, v775_now%get_point(m,n), v775_next%get_point(m,n))
-            v_hPa(m,n,9) = hourint(tint, v800_now%get_point(m,n), v800_next%get_point(m,n))
-            v_hPa(m,n,8) = hourint(tint, v825_now%get_point(m,n), v825_next%get_point(m,n))
-            v_hPa(m,n,7) = hourint(tint, v850_now%get_point(m,n), v850_next%get_point(m,n))
-            v_hPa(m,n,6) = hourint(tint, v875_now%get_point(m,n), v875_next%get_point(m,n))
-            v_hPa(m,n,5) = hourint(tint, v900_now%get_point(m,n), v900_next%get_point(m,n))
-            v_hPa(m,n,4) = hourint(tint, v925_now%get_point(m,n), v925_next%get_point(m,n))
-            v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
-            v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
-            v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
+!            print *, "for this iteration, ",jh,jm,m,n,t_hPa(m,n,3), loaded_already
 
             do n_si = 1, ncat
 
                 !!!!!! INITIALISE SEA ICE GRID !!!!!
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
                 call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
-!                print *, "HCRTil compute_dzeta ",ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si),ni
-!                print *, "ALBEDO, SEMIS, start loop 3 ",albedo(m,n,n_si),semis(m,n,n_si)
 
                 !print *, "about to integrate -----------", n_si
                 !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
@@ -1393,7 +1434,7 @@ PROGRAM ABL
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
                   sdlw, sdsw,                                               & ! From file
-                  ntlw, ntsw, mslhf, msshf,                                 &
+!                  ntlw, ntsw, mslhf, msshf,                                 &
                   slon,                                                     & ! See above
                   semis(m,n,n_si),                                          & ! Internal or from coupler?
                   rlat(m,n),                                                &
@@ -1426,6 +1467,7 @@ PROGRAM ABL
                 !print *, "T: n_si ",n_si,m,n,tsoil(m,n,1,n_si)
                 !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
                 !print *, "check lw_net af is ",lw_net(m,n,n_si)
+
             enddo
 
             !! After each loop, make sure we update the main arrays with a
@@ -1488,7 +1530,7 @@ PROGRAM ABL
 
               blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
             enddo
-
+      
             ! now, add the new averaged arrays back to those to be carried
             ! forward
             u(m,n,:) = u_sum_cat
@@ -1548,6 +1590,10 @@ PROGRAM ABL
         time = time + dt;
         merge_cnt = merge_cnt + ds
 
+        if (repeat_forcing.eq.-1) then
+            ! print *, "setting loaded_already",loaded_already
+            loaded_already = 1
+        endif
 !$OMP MASTER
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
@@ -1578,12 +1624,13 @@ PROGRAM ABL
           call srfv_balance%append_var("sw_net2",sw_net(:,:,2))
           call srfv_balance%append_var("h02",h0(:,:,2))
           call srfv_balance%append_var("e02",e0(:,:,2))
-          call srfv_balance%append_var("gflux3",gflux(:,:,3))
-          call srfv_balance%append_var("lw_net3",lw_net(:,:,3))
-          call srfv_balance%append_var("sw_net3",sw_net(:,:,3))
-          call srfv_balance%append_var("h03",h0(:,:,3))
-          call srfv_balance%append_var("e03",e0(:,:,3))
-
+          if (ncat.gt.2) then
+            call srfv_balance%append_var("gflux3",gflux(:,:,3))
+            call srfv_balance%append_var("lw_net3",lw_net(:,:,3))
+            call srfv_balance%append_var("sw_net3",sw_net(:,:,3))
+            call srfv_balance%append_var("h03",h0(:,:,3))
+            call srfv_balance%append_var("e03",e0(:,:,3))
+          endif
           call ERA_vals%append_time(time)
           call ERA_vals%append_var("ERA_t",t_hPa)
           call ERA_vals%append_var("ERA_u",u_hPa)
@@ -1732,16 +1779,6 @@ PROGRAM ABL
 
     END FUNCTION hourint
 
-    !INTEGER FUNCTION read_merge_timestep(filename) RESULT(out_merge_timestep)
-
-    !  character(len=*), intent(in) :: filename
-
-    !  integer :: unitN
-    !  integer :: ierr
-
-    !  open(unitN,file=filename,status='old',action='read',iostat=ierr)
-
-    !  if (ierr /= 0) then
     !    write(*,*) "error: unable to open the file", filename
     !    stop
     !  endif

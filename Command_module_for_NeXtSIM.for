@@ -20,7 +20,7 @@ c  zt(j)-  turbulent quantities (e, ep, uw, vw, wt, wq, wqi, km & kh)  *
 c***********************************************************************
 
       SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t_hPa,u_hPa,v_hPa,lw,sw,
-     1    ntlw, ntsw, mslhf, msshf,
+c     1    ntlw, ntsw, mslhf, msshf,
      1    slon,
      1    semis,rlat,z0_in,
      1    ct_ice,
@@ -148,7 +148,7 @@ c---------Some variables used in surface energy balance calculations
       REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs,ERAgflux
       REAL lw_net, sw_net
-      REAL ntsw, ntlw, mslhf, msshf
+c      REAL ntsw, ntlw, mslhf, msshf
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
 c===================Set constants
@@ -532,7 +532,7 @@ c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
 c          print *, "INPUTS TO LW",lw,sbc,t(1)
           lw_net = lw - sbc*semis*(t(1)**4)
           sw_net = (1.-albedo1)*sw
-          ERAgflux=ntlw+ntsw+mslhf+msshf
+c          ERAgflux=ntlw+ntsw+mslhf+msshf
 c          print *, "ERA gflux vals",ERAgflux,ntlw,mslhf,msshf 
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
 c          print *,"model gflux vals ",gflux,lw_net,h0,e0

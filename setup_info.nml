@@ -1,5 +1,5 @@
 &grid_info
-  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/Fram.nc",
+  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/grid.nc_sample",
   lon_name = "plon",
   lat_name = "plat",
   mask_name = "mask",
@@ -30,8 +30,8 @@
   ! This functionality needs to be adapted further! 
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
-  do_si_ics = 1., ! =1 means use constants in constants_info; =2 means from file
-  seaice_ics_dir = "/cluster/projects/nn9878k/hregan/ABL/data/Moorings_lowres",
+  do_si_ics = 2, ! =1 means use constants in constants_info; =2 means from file
+  seaice_ics_dir = "/cluster/projects/nn9878k/hregan/ABL/data",
   si_ics_ftype = "Moorings", ! Moorings or ERA
   read_sst = 0 ! if 1, read sst from the Moorings file. If 0, set to freezing point
 /

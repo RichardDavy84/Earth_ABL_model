@@ -248,9 +248,6 @@ PROGRAM ABL
   ERA_time = time0
   print *, "start and end:",s_year,"-",e_month,"-",s_day," to ",e_year,"-",e_month,"-",e_day
 
-  ! merge_seconds=read_merge_timestep("./merge_timestep.cfg")
-  ! print *, "merge_seconds ",merge_seconds
-  ! coupling_dt=timedelta(seconds=900)
   if (merge_seconds.gt.0) then
     merge_dt=timedelta(seconds=merge_seconds)
     merge_ds=merge_dt%getSeconds()
@@ -294,7 +291,6 @@ PROGRAM ABL
 
   ! Initialise input files and read initial field
   ! example code for p0
-  ! TODO: Read directory name (here "data") from namelist
   ! Initial conditions
   call p0%init("msl",forcing_dir, rlon, rlat, time0, "ERA")
   call t0%init("t2m",forcing_dir, rlon, rlat, time0, "ERA")
@@ -413,18 +409,6 @@ PROGRAM ABL
   call sdsw_now%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
   call sdsw_next%init("msdwswrf", forcing_dir, rlon, rlat, time0, "ERA")
 
-!  call ntlw_now%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
-!  call ntlw_next%init("msnlwrf", forcing_dir, rlon, rlat, time0, "ERA")
-
-!  call ntsw_now%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
-!  call ntsw_next%init("msnswrf", forcing_dir, rlon, rlat, time0, "ERA")
-
-!  call mslhf_now%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
-!  call mslhf_next%init("mslhf", forcing_dir, rlon, rlat, time0, "ERA")
-
-!  call msshf_now%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
-!  call msshf_next%init("msshf", forcing_dir, rlon, rlat, time0, "ERA")
-
   call sic_now%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sit_now%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call snt_now%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -445,8 +429,10 @@ PROGRAM ABL
    
   if (do_si_ics.eq.2) then
       if ( mooring_or_superice.eq.1 ) then
+          print *, "seaice dir ",seaice_ics_dir
           call sic_init%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sic_init%read_input(time0, "Moorings")
+          print *, "reading sic_init"
           call sit_init%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call sit_init%read_input(time0, "Moorings")
           call snt_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -471,6 +457,7 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  print *, "reading sic_now"
   call sic_now%read_input(time0, "Moorings")
   print *, "read_input some a1"
   call sit_now%read_input(time0, "Moorings")
@@ -535,25 +522,6 @@ PROGRAM ABL
        v_hPa(m,n,2) = v975_now%get_point(m,n)
        v_hPa(m,n,1) = v1000_now%get_point(m,n)
 
-     ! Now update u and v initial conditions to be profiles from ERA5
-!      do np=1,nplev
-!!      1) if above or below boundary layer, force differently
-!!      2) if hPa var is greater than  the highest pressure in the model,do not nudge
-!       height_hPa=(((100.*hPa(np)/p(m,n,1))**(1./5.257)-1.)*(t_hPa(m,n,np)))/0.0065 ! Use
-!! hypsometric formula to convert T850 to temperature at the nearest height level
-!       if(abs(height_hPa).gt.20) then
-!           Location = minloc(abs(zm-abs(height_hPa)),1)               ! Find the
-!! nearest height level that matches
-!           t(m,n,Location:nj) = t(m,n,Location:nj) + t_hPa(m,n,np) 
-!           u(m,n,Location:nj) = u(m,n,Location:nj) + u_hPa(m,n,np) 
-!           v(m,n,Location:nj) = v(m,n,Location:nj) + v_hPa(m,n,np) 
-!       endif
-!      enddo
-
-!      print *, "about to INITIALIZE!!!"
-
-
-      ! print *, "SETTING ALBEDO AS NEXTSIM DEFAULT FOR NOW (need to put in namelist)"
       ! Should this albedo ultimately be affected by the snow?
       ! print *, "future consideration is to include snow albedo"
       ! albedo = frac_sn*albs + frac_pnd*alb_pnd + (1.-frac_sn-frac_pnd)*albi;
@@ -568,8 +536,6 @@ PROGRAM ABL
         albedo(m,n,1) = const_albedo(1) !0.63 ! Albedo for thick ice (nextsim default)
         semis(m,n,1) = const_semis(1) !0.996 ! Emissivity of ice, as in nextsim
       endif
-
-!      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
 
       !!! Hack for now
       do n_si = 1,ncat
@@ -598,7 +564,6 @@ PROGRAM ABL
         ice_snow_thick(m,n,ncat) = 0.
         ! Now for the sea ice categories
         sic(m,n,1) = sic_init%get_point(m,n)
-        !print *, "ICs 0 ",sic(m,n,1)
         ! First, check that the sea ice concentration is between zero and one (i.e. a value). 
         ! Hack to allow for weird values in smoothing... ONLY FOR NOW!
         if (si_ics_ftype=="Superice") then
@@ -636,7 +601,6 @@ PROGRAM ABL
                 ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
                 sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
             elseif (ncat.gt.2) then
-                !print *, "ICs cats"
                 sic(m,n,2) = sic2_init%get_point(m,n)
                 sic(m,n,1) = sic_init%get_point(m,n) - sic(m,n,2) ! Important! Remember in nextsim sic = thick plus thin
                 if (sic(m,n,1).gt.0) then
@@ -647,19 +611,16 @@ PROGRAM ABL
                     ! open water conc
                     sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
                 else ! there is no thick ice
-                    !print *, "ICs cats 2"
                     sit(m,n,1) = 0.
                     snt(m,n,1) = 0.
                 endif
                 if (sic(m,n,2).gt.0) then ! there is young (thin) ice
-                    !print *, "ICs cats 3, sit ",sit2_init%get_point(m,n),sic2_init%get_point(m,n)
                     ! For young category:
                     sit(m,n,2) = sit2_init%get_point(m,n)/sic2_init%get_point(m,n)
                     snt(m,n,2) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
                     ! open water conc
                     sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,2)
                 else
-                    !print *, "ICs cats 4"
                     sit(m,n,2) = 0.
                     snt(m,n,2) = 0.
                 endif
@@ -673,10 +634,6 @@ PROGRAM ABL
                     sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,n_si)
                 enddo
             endif
-            !print *, "ICs 1a ",sic(m,n,1),sit(m,n,1),snt(m,n,1)
-            !print *, "ICs 2a ",sic(m,n,2),sit(m,n,2),snt(m,n,2)
-            !print *, "ICs 3a ",sic(m,n,3),sit(m,n,3),snt(m,n,3)
-            !print *, "ICs 4a ",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2),ice_snow_thick(m,n,3)
           elseif (si_ics_ftype=="ERA") then
             ! In ERA, we only have thickness of 1.5m in reanalysis computation, and no variable output. Use constants set in setup
             sit(m,n,1) = const_sit_init(1)
@@ -695,10 +652,6 @@ PROGRAM ABL
                 enddo
             endif
           endif
-        !print *, "ICs 1 ",sic(m,n,1),sit(m,n,1),snt(m,n,1)
-        !print *, "ICs 2 ",sic(m,n,2),sit(m,n,2),snt(m,n,2)
-        !print *, "ICs 3 ",sic(m,n,3),sit(m,n,3),snt(m,n,3)
-        !print *, "ICs 4 ",ice_snow_thick(m,n,1),ice_snow_thick(m,n,2),ice_snow_thick(m,n,3)
         else
           mask(m,n) = land_value
           do n_si = 1,ncat
@@ -708,37 +661,8 @@ PROGRAM ABL
           enddo      
         endif 
       endif
-      ! Choose some initial sea ice conditions
-      !sic(m,n,1) = sic_init !0.50 ! 0.90
-      !sit(m,n,1) = sit_init
-      !snt(m,n,1) = snt_init
-      !if (ncat.gt.1) then 
-      !    sic(m,n,ncat) = 0. ! so this will always be 0, since it is open water
-      !    sit(m,n,ncat) = 0.
-      !    snt(m,n,ncat) = 0.
-      !    if (ncat.gt.2) then
-      !        sic(m,n,2) = sic_init_young  
-      !        sit(m,n,2) = sit_init_young
-      !        snt(m,n,2) = snt_init_young
-      !    endif
-      !endif
-      !  if (n_si.lt.ncat) then
-      !    sic(m,n,n_si) = 0.95 !sic_now%get_point(m,n)
-      !    ! sic(m,n,n_si) = 0.95/(ncat-1) !sic_now%get_point(m,n)
-      !   if (sic(m,n,n_si).gt.0.) then
-      !     snt(m,n,n_si) = 0.2/sic(m,n,n_si) !snt_now%get_point(m,n)
-      !     sit(m,n,n_si) = 2./sic(m,n,n_si) !sit_now%get_point(m,n)
-      !   else
-      !     snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
-      !      sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
-      !    endif
-      !  else
-      !    snt(m,n,n_si) = 0. !snt_now%get_point(m,n)
-      !    sit(m,n,n_si) = 0. !sit_now%get_point(m,n)
-      !    sic(m,n,n_si) = 0. !sic_now%get_point(m,n)
-      !  endif
-      !enddo
 
+      print *, "initialised seaice"
 !!    Settings for "soil" code
       ct_ice(m,n,:) = const_ct_ice(:)        ! for now, use same ct_ice as z0 via setup_info
      
@@ -747,35 +671,6 @@ PROGRAM ABL
       tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
       zsoil(m,n,:,:) = 0.
 
-!!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
-!      call Initialize_NeXtSIM_ABL( &
-!        albedo(m,n,1),                                                    & ! Internal or from coupler?
-!!        u_in, v_in,                                                     &
-!        u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
-!!        u(m,n,:), v(m,n,:),               & ! From file
-!        slon,                                                           & ! See above
-!        semis(m,n,1),                                                     & ! Internal or from coupler?
-!        rlat(m,n),                                                      &
-!        z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
-!        ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
-!!        z0(m,n),                                                        & ! Internal or from coupler?
-!        taur(m,n),                                                      & ! Internal variable
-!!        p0%get_point(m,n), q0%get_point(m,n), t0%get_point(m,n),        & ! From file
-!        p0%get_point(m,n), q0%get_point(m,n), & ! From file
-!        t0%get_point(m,n),        & ! From file
-!        nj,                                                             & ! Number of vertical grid points
-!        nv,                                                             & ! Always 6?
-!        dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
-!        u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),              & ! prognostics
-!        e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),           & ! prognostics
-!        wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),        & ! prognostics
-!        p(m,n,:), tld(m,n,:), ni,                                       &    ! prognostics
-!        dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick(m,n,1) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
-!      print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
-!      print *, "ustar from initialize: ",ustar(m,n)
-!      print *, "soil values: "
-!      print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
-
       do n_si = 1,ncat
     !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
           if (use_d2m.eq.1) then
@@ -783,7 +678,6 @@ PROGRAM ABL
           else
               q0_val = q0%get_point(m,n)
           endif
-          ! print *, "values into init ",ice_snow_thick(m,n,n_si),n_si
           call Initialize_NeXtSIM_ABL( &
             albedo(m,n,n_si),                                                    & ! Internal or from coupler?
             u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
@@ -795,7 +689,6 @@ PROGRAM ABL
             taur(m,n),                                                      & ! Internal variable
             p0%get_point(m,n), q0_val,                    & ! From file
             263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
-!            p0%get_point(m,n), q0_val, t0%get_point(m,n),                   & ! From file
             nj,                                                             & ! Number of vertical grid points
             nv,                                                             & ! Always 6?
             dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
@@ -808,57 +701,14 @@ PROGRAM ABL
             p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
             dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
             dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
-!          print *, "ALBEDO, SEMIS, ",albedo(m,n,:),semis(m,n,:)
-!          print *, "ustar from initialize: ",ustar(m,n)
-!          print *, "soil values: "
-!          print *, dedzs(m,n,:,1),tsoil(m,n,:,1),zsoil(m,n,:,1),dzeta(m,n,1),ice_snow_thick             ! for "soil" temperatures
-!          print *, "INITIAL TEMPERATURE PROFILE IS ",t_each_cat(m,n,:,n_si),theta(m,n,nj)
 
-
-!      ! Now initialise for later
-!        u_each_cat(m,n,:,n_si) = u(m,n,:)
-!        v_each_cat(m,n,:,n_si) = v(m,n,:)
-!        t_each_cat(m,n,:,n_si) = t(m,n,:)
-!        q_each_cat(m,n,:,n_si) = q(m,n,:)
-!        qi_each_cat(m,n,:,n_si) = qi(m,n,:)
-!        e_each_cat(m,n,:,n_si) = e(m,n,:)
-!        ep_each_cat(m,n,:,n_si) = ep(m,n,:)
-!        uw_each_cat(m,n,:,n_si) = uw(m,n,:)
-!        vw_each_cat(m,n,:,n_si) = vw(m,n,:)
-!        wt_each_cat(m,n,:,n_si) = wt(m,n,:)
-!        wq_each_cat(m,n,:,n_si) = wq(m,n,:)
-!        wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)
-!        km_each_cat(m,n,:,n_si) = km(m,n,:)
-!        kh_each_cat(m,n,:,n_si) = kh(m,n,:)
-!        ustar_each_cat(m,n,n_si) = ustar(m,n)
-!        p_each_cat(m,n,:,n_si) = p(m,n,:)
-!        tld_each_cat(m,n,:,n_si) = tld(m,n,:)
-!        blht_each_cat(m,n,n_si) = blht(m,n)
-!        rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)
       enddo
  
-!      print *, "T",t(m,n,:)
-
-!!     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
-!      !!! HACK FOR NOW
-!      do n_si=1,ncat
-!        dedzs(m,n,:,n_si) = dedzs(m,n,:,1)
-!        tsoil(m,n,:,n_si) = tsoil(m,n,:,1)
-!        zsoil(m,n,:,n_si) = zsoil(m,n,:,1)
-!        dzeta(m,n,n_si) = dzeta(m,n,1)
-!      enddo
       blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
 
     endif 
    enddo
   enddo
-
-!  u850_init_HR = u850_now%get_point(1,1)
-!  v850_init_HR = v850_now%get_point(1,1)
-!  t850_init_HR = t850_now%get_point(1,1)
-!  sdsw_init_HR = sdsw_now%get_point(1,1)
-!  sdlw_init_HR = sdlw_now%get_point(1,1)
-!  print *, "u850 INIT ",u850_init_HR
 
   ! Initialise output files
   call srfv_all%init('SRFV-ALL.nc', mgr, ngr, mask, rlon, rlat)
@@ -877,7 +727,6 @@ PROGRAM ABL
 !  print *, "Initialised srfv "
 
   call Turb%init('Turb.nc', mgr, ngr, mask, rlon, rlat, zt=zt)
-!  print *, "adding variables to Turb"
   call Turb%add_var("dummy", "zt")
   call Turb%add_var("e", "zt")
   call Turb%add_var("uw", "zt")
@@ -890,10 +739,7 @@ PROGRAM ABL
   call Turb%add_var("wqi", "zt")
 ! call Turb%add_var("rnet", "zt")
   call Turb%add_var("wt", "zt")
-!  print *, "Initialised Turb "
 
-!  print *, "we are initialilsing zm in Met.nc as "
-!  print *, zm
   call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
   call Met%add_var("dummy", "zm")
   call Met%add_var("u", "zm")
@@ -902,7 +748,6 @@ PROGRAM ABL
   call Met%add_var("p", "zm")
   call Met%add_var("q", "zm")
   call Met%add_var("qi", "zm")
-!  print *, "Initialised Met"
 
   ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
   call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
@@ -964,14 +809,11 @@ PROGRAM ABL
     call srfv_balance%add_var("h03")
     call srfv_balance%add_var("e03")
   endif
-!  print *, "Initialised srfv balance "
 
   call ice_layers%init('ice_layers.nc', mgr, ngr, mask, rlon, rlat, nz=ni)
   call ice_layers%add_var("dummy","nz")
   call ice_layers%add_var("tsoil1","nz")
-!  print *, "here 1"
   call ice_layers%add_var("zsoil1","nz")
-!  print *, "here 2"
   call ice_layers%add_var("tsoil2","nz")
   call ice_layers%add_var("zsoil2","nz")
   call ice_layers%add_var("tsoil3","nz")
@@ -982,14 +824,8 @@ PROGRAM ABL
   call ice_layers%add_var("ice_conc1")
   call ice_layers%add_var("ice_conc2")
   call ice_layers%add_var("ice_conc3")
-  ! call ice_layers%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
-  !print *, "here 3"
-  !call ice_layers%append_var("zsoil1", zsoil(:,:,:,1))
-
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!  print *, "Initialised"
-!  print *, "now zm is ",zm
   ! Output initial conditions
   call init_cond%init('INIT_COND.nc', mgr, ngr, mask, rlon, rlat, zm=zm, zt=zt,nz=ni)
 
@@ -1039,46 +875,11 @@ PROGRAM ABL
   call init_cond%append_var("tsoil1", tsoil(:,:,:,1)) ! first category
   call init_cond%append_var("zsoil1", zsoil(:,:,:,1))
 
-
-!  print *, "we are initialilsing zm in Met.nc as "
-!  print *, zm
-!  call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
-!  call Met%add_var("u", "zm")
-!  call Met%add_var("v", "zm")
-!  call Met%add_var("t", "zm")
-!  call Met%add_var("p", "zm")
-!  call Met%add_var("q", "zm")
-!  call Met%add_var("qi", "zm")
-!  print *, "Initialised Met"
-
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Time stepping
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-!  HCR add: initialise values for conductive heat flux!
-!   do m = 1, mgr
-!     do n = 1, ngr
-!       dQiadT = 4.*0.996*0.0000000567*(t(m,n,1)**3)
-!       gflux = lw_net + sw_net + mslhf + msshf 
-!  call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)
-!       Tsurf
-!  for m,n loop
-!  Tsurf_old = t(m,n,1)
-!  gflux = lw_net + sw_net + mslhf + msshf 
-!  dQiadT = 4.*0.996*0.0000000567*(t(m,n,1)**3)
-!  call thermoIce0(ds,sic,sit,snt,-gflux,dQiadT,Tsurf)
-!  if (abs(Tsurf-Tsurf_old).lt.1e2) then
-!    WE HAVE INITIALISED TSURF  
-
-!  Tsurf = t(:,:,1)  
-!  print *, "initialising Tsurf",t(:,:,1),-2.+273.15
-!  do m = 1, mgr
-!    do n = 1, ngr
-!      print *, "setting Tsurf"
-!      Tsurf(m,n) = -2. + 273.15
-!    enddo
-!  enddo
   if (repeat_forcing.eq.-1) then
       ! ERA_time remains as t0
       next_time = ERA_time ! ERA_time is set
@@ -1087,10 +888,6 @@ PROGRAM ABL
       ERA_time = time    
       next_time = time + timedelta(hours=1)
   endif
-  !print *, "reading in next si"
-  !call sic_next%read_input(next_time, "Moorings")
-  !call sit_next%read_input(next_time, "Moorings")
-  !call snt_next%read_input(next_time, "Moorings")
 
   print *, "initialising done: starting main loop"
   
@@ -1134,10 +931,6 @@ PROGRAM ABL
           call v850_now%read_input(ERA_time, "ERA")
           call sdlw_now%read_input(ERA_time, "ERA")
           call sdsw_now%read_input(ERA_time, "ERA")
-          ! call ntlw_now%read_input(ERA_time, "ERA")
-          ! call ntsw_now%read_input(ERA_time, "ERA")
-          ! call mslhf_now%read_input(ERA_time, "ERA")
-          ! call msshf_now%read_input(ERA_time, "ERA")
     !      call sic_now%read_input(time, "Moorings")
     !      call sit_now%read_input(time, "Moorings")
     !      call snt_now%read_input(time, "Moorings")
@@ -1147,10 +940,6 @@ PROGRAM ABL
           call v850_next%read_input(next_time, "ERA")
           call sdlw_next%read_input(next_time, "ERA")
           call sdsw_next%read_input(next_time, "ERA")
-          ! call ntlw_next%read_input(next_time, "ERA")
-          ! call ntsw_next%read_input(next_time, "ERA")
-          ! call mslhf_next%read_input(next_time, "ERA")
-          ! call msshf_next%read_input(next_time, "ERA")
     !      call sic_next%read_input(next_time, "Moorings")
     !      call sit_next%read_input(next_time, "Moorings")
     !      call snt_next%read_input(next_time, "Moorings")
@@ -1238,7 +1027,6 @@ PROGRAM ABL
 
       do jm = 1, nmts
         ha = (1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
-        !print *, "doing the Integration as jh, jm = ",jh,jm
 
         if (merge_cnt.eq.merge_ds) then
           do_merge_columns = 1 ! ULTIMATELY, THIS NEEDS TO UPDATE BASED ON COUPLING 
@@ -1259,17 +1047,6 @@ PROGRAM ABL
             tint = real(jm-1)/real(nmts)
             sdlw = hourint(tint, sdlw_now%get_point(m,n), sdlw_next%get_point(m,n))
             sdsw = hourint(tint, sdsw_now%get_point(m,n), sdsw_next%get_point(m,n))
-            ! ntlw = hourint(tint, ntlw_now%get_point(m,n), ntlw_next%get_point(m,n))
-            ! ntsw = hourint(tint, ntsw_now%get_point(m,n), ntsw_next%get_point(m,n))
-            ! mslhf = hourint(tint, mslhf_now%get_point(m,n), mslhf_next%get_point(m,n))
-            ! msshf = hourint(tint, msshf_now%get_point(m,n), msshf_next%get_point(m,n))
-!            if (m.eq.1) then
-!                if (n.eq.1) then
-!                    print *, "WHY time ",jd,jh,jm,",tint",tint
-!                    print *, "WHY sdlw ",sdlw,"sdsw",sdsw
-!                    print *,"WHY sdlw2 ",sdlw_now%get_point(m,n),sdlw_next%get_point(m,n)
-!                endif
-!            endif
 
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
@@ -1292,7 +1069,6 @@ PROGRAM ABL
 !              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !            enddo
 
-            !print *, "get hPa levels"
             if (loaded_already.eq.0) then
                 t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
                 if (t700_now%get_point(m,n).lt.0) then
@@ -1394,7 +1170,6 @@ PROGRAM ABL
                 v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
                 print *, "loaded nudging vars ",m,n
             endif
-!            print *, "for this iteration, ",jh,jm,m,n,t_hPa(m,n,3), loaded_already
 
             do n_si = 1, ncat
 
@@ -1402,39 +1177,10 @@ PROGRAM ABL
                 call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
                 call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 
-                !print *, "about to integrate -----------", n_si
-                !print *, "t_test ",m,n," t_each_cat in ",t_each_cat(m,n,:,n_si)
-                !print *, "t_test ",m,n," t outside ",t(m,n,:) ! for n_si == 1, these should be the same. For n_si == 2, not used...
-                !print *,  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si)
-                !print *,  u_each_cat(m,n,:,n_si)
-                !print *,  v_each_cat(m,n,:,n_si)
-                !print *,  q_each_cat(m,n,:,n_si)
-                !print *, qi_each_cat(m,n,:,n_si) 
-                !print *,  e_each_cat(m,n,:,n_si)
-                !print *, ep_each_cat(m,n,:,n_si)
-                !print *,  uw_each_cat(m,n,:,n_si)
-                !print *,  vw_each_cat(m,n,:,n_si)
-                !print *, wt_each_cat(m,n,:,n_si)
-                !print *,  wq_each_cat(m,n,:,n_si)
-                !print *, wqi_each_cat(m,n,:,n_si)
-                !print *, km_each_cat(m,n,:,n_si)
-                !print *, kh_each_cat(m,n,:,n_si)
-                !print *, ustar_each_cat(m,n,n_si)
-                !print *,  p_each_cat(m,n,:,n_si)
-                !print *, tld_each_cat(m,n,:,n_si) 
-                !print *,  blht_each_cat(m,n,n_si)
-                !print *, rif_blht_each_cat(m,n,n_si)
-!                print *, "ALBEDO is ", albedo(m,n,n_si), " for n_si = ",n_si
-!                print *, "SEMIS is ", semis(m,n,n_si), " for n_si = ",n_si
-!                print *, "Tsurf from, n_si = ",n_si
-!                print *, "gflux vals will be for n_si = ",n_si,", Tsurf is ",t_each_cat(m,n,1,n_si)
-!                print *, "THETA INT BEFORE ",theta(m,n,1),theta(m,n,2),theta(m,n,nj)
-!                print *, "****** CATEGORY ",n_si," ********"
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
                   sdlw, sdsw,                                               & ! From file
-!                  ntlw, ntsw, mslhf, msshf,                                 &
                   slon,                                                     & ! See above
                   semis(m,n,n_si),                                          & ! Internal or from coupler?
                   rlat(m,n),                                                &
@@ -1456,17 +1202,10 @@ PROGRAM ABL
                   kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),  & ! prognostics
                   p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), & 
                   blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
-                  !u(m,n,:), v(m,n,:), t(m,n,:), q(m,n,:), qi(m,n,:),        & ! prognostics
-                  !e(m,n,:), ep(m,n,:), uw(m,n,:), vw(m,n,:), wt(m,n,:),     & ! prognostics
-                  !wq(m,n,:), wqi(m,n,:), km(m,n,:), kh(m,n,:), ustar(m,n),  & ! prognostics
-                  !p(m,n,:), tld(m,n,:), blht(m,n), rif_blht(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
                   do_si_coupling, nudge_800, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
-                !print *, "T: n_si ",n_si,m,n,tsoil(m,n,1,n_si)
-                !print *, "t_test ",m,n," t_each_cat out ",t_each_cat(m,n,:,n_si), n_si
-                !print *, "check lw_net af is ",lw_net(m,n,n_si)
 
             enddo
 
@@ -1496,7 +1235,6 @@ PROGRAM ABL
 
             area_conc_ow = 1.
             do n_si = 1, ncat
-!              print *, "HCRTil n_si = ",n_si
               if (do_tiling.eq.0) then
                 area_conc = 1.
               elseif (n_si.eq.ncat) then ! we are on the open water one (n-1 sea ice categories + 1 ocean category
@@ -1507,7 +1245,6 @@ PROGRAM ABL
                 ! thin sea ice, sic_thin, for ocean, 1. - sic - sic_thin ... 
                 ! for this last one, assume that all categories are independent! i.e. for nextsim mooring output (not coupled, but used for testing), sit + sit_thin + ocean = 1
               endif
-              !print *, "check! area_conc for n_si ",n_si,area_conc
               u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
               v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
               t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
@@ -1536,10 +1273,6 @@ PROGRAM ABL
             u(m,n,:) = u_sum_cat
             v(m,n,:) = v_sum_cat
             t(m,n,:) = t_sum_cat
-!            print *, "updates: ",t_each_cat(m,n,1,:),t_sum_cat(1),t(m,n,1)
-!            print *, "updates: ",t_each_cat(m,n,2,:),t_sum_cat(2),t(m,n,2)
-!            print *, "updates: ",t_each_cat(m,n,3,:),t_sum_cat(3),t(m,n,3)
-            !print *, "t_test ",m,n," t at end ",t(m,n,:)
             q(m,n,:) = q_sum_cat 
             qi(m,n,:) = qi_sum_cat 
             e(m,n,:) = e_sum_cat  
@@ -1557,31 +1290,6 @@ PROGRAM ABL
             blht(m,n) = blht_sum_cat 
             rif_blht(m,n) = rif_blht_sum_cat 
 
-            ! if (do_merge_columns.eq.1) then
-            !   do n_si = 1,ncat
-            !     ! Now reinitialise (but will this be overwritten anyway?)
-            !     u_each_cat(m,n,:,n_si) = u(m,n,:)*1.
-            !     v_each_cat(m,n,:,n_si) = v(m,n,:)*1.
-            !     t_each_cat(m,n,:,n_si) = t(m,n,:)*1.
-            !     q_each_cat(m,n,:,n_si) = q(m,n,:)*1.
-            !     qi_each_cat(m,n,:,n_si) = qi(m,n,:)*1.
-            !     e_each_cat(m,n,:,n_si) = e(m,n,:)*1.
-            !     ep_each_cat(m,n,:,n_si) = ep(m,n,:)*1.
-            !     uw_each_cat(m,n,:,n_si) = uw(m,n,:)*1.
-            !     vw_each_cat(m,n,:,n_si) = vw(m,n,:)*1.
-            !     wt_each_cat(m,n,:,n_si) = wt(m,n,:)*1.
-            !     wq_each_cat(m,n,:,n_si) = wq(m,n,:)*1.
-            !     wqi_each_cat(m,n,:,n_si) = wqi(m,n,:)*1.
-            !     km_each_cat(m,n,:,n_si) = km(m,n,:)*1.
-            !     kh_each_cat(m,n,:,n_si) = kh(m,n,:)*1.
-            !     ustar_each_cat(m,n,n_si) = ustar(m,n)*1.
-            !     p_each_cat(m,n,:,n_si) = p(m,n,:)*1.
-            !     tld_each_cat(m,n,:,n_si) = tld(m,n,:)*1.
-            !     blht_each_cat(m,n,n_si) = blht(m,n)*1.
-            !     rif_blht_each_cat(m,n,n_si) = rif_blht(m,n)*1.
-            !   enddo
-            ! endif 
-       
           endif
          enddo
         enddo
@@ -1591,7 +1299,6 @@ PROGRAM ABL
         merge_cnt = merge_cnt + ds
 
         if (repeat_forcing.eq.-1) then
-            ! print *, "setting loaded_already",loaded_already
             loaded_already = 1
         endif
 !$OMP MASTER
@@ -1637,7 +1344,6 @@ PROGRAM ABL
           call ERA_vals%append_var("ERA_v",v_hPa)
 
           ! Heather moved to here so we have more frequent output
-!          print *, "APPENDIGN THIS U ",u
           call Met%append_time(time)
           call Met%append_var("u", u)
           call Met%append_var("v", v)
@@ -1646,9 +1352,6 @@ PROGRAM ABL
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
  
-!          print *, "outputting what t? ", t(1,1,1),t_each_cat(1,1,1,:)
-!          print *, "outputting what t? ", t(1,1,2),t_each_cat(1,1,2,:)
-
           call Met_SI1%append_time(time)
           call Met_SI1%append_var("u", u_each_cat(:,:,:,1))
           call Met_SI1%append_var("v", v_each_cat(:,:,:,1))
@@ -1658,9 +1361,7 @@ PROGRAM ABL
           call Met_SI1%append_var("qi", qi_each_cat(:,:,:,1))
  
           call ice_layers%append_time(time)
-!          print *, "about to append tsoil1"
           call ice_layers%append_var("tsoil1",tsoil(:,:,:,1))
-!          print *, "about to append zsoil1"
           call ice_layers%append_var("zsoil1",zsoil(:,:,:,1))
           call ice_layers%append_var("ice_snow_thick1",ice_snow_thick(:,:,1))
           call ice_layers%append_var("ice_conc1",sic(:,:,1))
@@ -1732,11 +1433,7 @@ PROGRAM ABL
 !$OMP END DO
         endif
 
-!        print *, "appended et and srfv_all"
       enddo
-      ! print *, "updated time: ",time%getYear(),time%getMonth(),time%getDay(), time%getHour(),time%getMinute(),time%getSecond()
-!      print *, "end do"
-      ! surface variable every hr_out _hours_
 
 !$OMP MASTER
       IF(MOD(jh,hr_out).eq.0) then
@@ -1753,14 +1450,6 @@ PROGRAM ABL
   !      call Turb%append_var("rnet", rnet)
         call Turb%append_var("wt", wt)
 
-        ! call Met%append_time(time)
-        ! call Met%append_var("u", u)
-        ! print *, "added u to Met output"
-        ! call Met%append_var("v", v)
-        ! call Met%append_var("t", t)
-        ! call Met%append_var("p", p)
-        ! call Met%append_var("q", q)
-        ! call Met%append_var("qi", qi)
       ENDIF
 !$OMP END MASTER
 

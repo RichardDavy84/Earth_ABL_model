@@ -149,7 +149,7 @@ PROGRAM ABL
     wq_sum_cat, wqi_sum_cat, km_sum_cat, kh_sum_cat, p_sum_cat,tld_sum_cat
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
-  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_800, read_sst
+  INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_level, read_sst
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -182,7 +182,7 @@ PROGRAM ABL
   namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
-  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_800 !, n_p_levels, pressure_levels
+  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
 
@@ -1239,7 +1239,7 @@ PROGRAM ABL
                   blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
-                  do_si_coupling, nudge_800, & 
+                  do_si_coupling, nudge_level, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
 
             enddo

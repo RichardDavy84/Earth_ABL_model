@@ -28,7 +28,7 @@ c     1    ntlw, ntsw, mslhf, msshf,
      1    sic, sit, snt, sst, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
-     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_800, 
+     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_level, 
      1    gflux, lw_net, sw_net, h0, e0)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
@@ -121,7 +121,7 @@ c     for conductive heat flux
       REAL sic, sit, snt, Qia, dQiadT, Tsurf      
       REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
 
-      INTEGER do_si_coupling, nudge_800
+      INTEGER do_si_coupling, nudge_level
 
       REAL Tsurf_tmp,hs
 
@@ -263,10 +263,10 @@ c            print *, "zfrc ",zfrc
 
 c     For 800hPa case, only want to adjust where p is there. So set
 c     minLoc and maxLoc accordingly
-      if (nudge_800.eq.1) then
+      if (nudge_level.gt.0) then
         do jj=1,nj ! Loop over z levels, find which one each height is in
           hloc = minloc(abs(hPa-p(jj)/100.),1) ! This is the closest
-          if (hPa(hloc) == 800.) then
+          if (hPa(hloc) == nudge_level) then
               min_Loc = jj
               max_Loc = jj
           endif

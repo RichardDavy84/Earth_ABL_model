@@ -492,6 +492,11 @@ PROGRAM ABL
   call v850_now%read_input(time0, "ERA")
 
   print *, "read_input some f"
+
+  if (do_si_coupling.eq.1) then
+    ni = 3 ! for Winton; othewise, use setup input for soil model
+  endif
+
  
   do m = 1, mgr
    do n = 1, ngr
@@ -648,7 +653,11 @@ PROGRAM ABL
             snt(m,n,1) = const_snt_init(1)
             ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
             sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
-            sst(m,n) = sst_now%get_point(m,n) ! already in K 
+            if (read_sst.eq.1) then
+                sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K. This sst is taken from Moorings... 
+            else
+                sst(m,n) = 271.15 !set to freezing point
+            endif
             if (ncat.gt.2) then
                 ! In ERA, we only have one ice category. If we want others, we need nonzero conc in constants and read from there
                 do n_si = 2,ncat-1
@@ -656,7 +665,7 @@ PROGRAM ABL
                     sit(m,n,n_si) = const_sit_init(n_si) 
                     snt(m,n,n_si) = const_snt_init(n_si)
                     ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
-                    sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,n_si)
+                    sic(m,n,ncat) = MAX(0.,MIN(sic(m,n,ncat) - sic(m,n,n_si),1.))
                 enddo
             endif
           endif
@@ -671,6 +680,10 @@ PROGRAM ABL
       endif
 
       print *, "initialised seaice"
+      print *, "sic ",sic(m,n,:) 
+      print *, "sit ",sit(m,n,:) 
+      print *, "snt ",snt(m,n,:) 
+      print *, "mask ",mask(m,n) 
 !!    Settings for "soil" code
       ct_ice(m,n,:) = const_ct_ice(:)        ! for now, use same ct_ice as z0 via setup_info
      
@@ -709,7 +722,6 @@ PROGRAM ABL
             p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
             dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
             dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
-
       enddo
  
       blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
@@ -1241,6 +1253,10 @@ PROGRAM ABL
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
                   do_si_coupling, nudge_level, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
+              
+                if (do_si_coupling == 0.) then
+                  ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+                endif
 
             enddo
 

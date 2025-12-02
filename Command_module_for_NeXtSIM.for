@@ -196,6 +196,7 @@ c      here, read in an input file with defined pressure levels
        nudge_justbelow_bl=0.5
        nudge_below_bl=0.2
 cccccc
+      print *, "TRACK T:1",t(1)
 c     INTERPOLATE
 c     STEP 1: create a new array of Locations (shape 12)   
       min_zm=ztop
@@ -314,6 +315,7 @@ c      print *, "T adjustment, ERA = ",t_Pa_to_z
          u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
          v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
       enddo
+      print *, "TRACK T:2",t(1)
        ! Finally, for any z values above ERA5 inputs, set u and v to be
        ! the last ERA5 values
        do jj=max_Loc,nj
@@ -480,6 +482,7 @@ c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
  120    CONTINUE
+      print *, "TRACK T:3",t(1)
 
 c---------Calculating turbulent length scales, eddy diffusivity & fluxes
         CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
@@ -513,6 +516,7 @@ c	  enddo
 c==============Calculating waterice cloud formation/sublimation
           qi(1)=qi(2)
         CALL swcond(p,q,qi,t,cp,latent,nj)
+      print *, "TRACK T:4",t(1)
 c        print *, "t after swcond", t
 
 c==============Calculating ground energy fluxes
@@ -634,7 +638,7 @@ c          print *, "before decisions, t(1) and tsoil are ",t(1),tsoil(1)
               ! In this situation, we use sea ice input from a model and run the soil model to compute the new surface temperature, which we will feed back to the sea ice model
               CALL soiltdm(dedzs,tsoil,zsoil,dzeta,hs,gflux,ds,ni) ! BE CAREFUL - IN NEXTSIM, SNOW THICKNESS IS /SIC, BUT NOT ALWAYS THE CASE!
               t(1)=MAX(MIN(tsoil(1),350.),200.)
-              call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+              ! call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
           elseif (do_si_coupling.eq.-1) then    
               ! This is for testing only! To run with sea ice initial conditions and no update to sea ice over time
 c              print *, "input to soiltdm ",tsoil
@@ -649,12 +653,19 @@ c              print *, "t1 soil setting af ",t(1)
               dQiadT = 4.*semis*sbc*(t(1)**3) !!! USE t(1) or tsoil(1) here???
               Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
               call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
-              call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+              ! call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
 c              print *, "Tsurf from thermoIce0",Tsurf_tmp
+              print *, "Tsurf af ",Tsurf_tmp
               t(1)=Tsurf_tmp
-              ! We do not need to regenerate the soil grid, since we are
-              ! not using the soil... so sit and snt should carry
-              ! through to next one from this computation 
+              tsoil(1)=t(1) 
+          elseif (do_si_coupling.eq.2) then    
+              dQiadT = 4.*semis*sbc*(t(1)**3) !!! USE t(1) or tsoil(1) here???
+              Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
+              call Winton(ds,gflux,dQiadT,sw_net,sic,sit,snt,     
+     1               Tsurf_tmp,tsoil(2),tsoil(3)) ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+              print *, "Tsurf af ",Tsurf_tmp
+              t(1)=Tsurf_tmp
+              tsoil(1)=t(1) 
           endif
           ! In every case, we must limit Tsurf to the freezing point, as
           ! t(1)=MIN(t(1), -0.055*5. + 273.15) ! these constants are the same as those in thermoIce0
@@ -685,6 +696,7 @@ c          call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and 
 c          print *, "INTEG new sit and snt",sit,snt
         endif
         betag=grav/t(1)
+      print *, "TRACK T:5",t(1)
 c        print *, "T: END LOOP"
 c        print *, "TSOIL_NOW ",tsoil
 

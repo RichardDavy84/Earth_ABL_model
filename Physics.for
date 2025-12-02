@@ -1447,7 +1447,7 @@ c     INPUT/OUTPUT
 c     FOR CONSTANTS/LOCAL
       REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
       REAL qi, qs, Tfr_ice, Tbot, tempCtoK
-      REAL Qic, Qio, del_hb, del_ht, draft  
+      REAL Qic, Qio, del_hb, del_ht, draft,Qia_uw  
       INTEGER flooding, freezingp ! an option in nextsim, default true...
       REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
       REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
@@ -1468,15 +1468,19 @@ c     is a namelist option, not just in constants.hpp
       freezingp = 0 ! in nextsim, we have LINEAR or UNESCO. Let's say (1) and (2)
       tempCtoK = 273.15 ! convert temperature from Celcius to Kelvin
 
-      Tfr_ice = -mu*si + tempCtoK ! freezing temp of ice, in KELVIN      
+c      Tfr_ice = -mu*si + tempCtoK ! freezing temp of ice, in KELVIN      
+      Tfr_ice = -mu*si ! freezing temp of ice, in CELCIUS      
 
       if ( freezingp == 0 ) then
-          Tbot = -2. + tempCtoK ! quick fix for now! Value used in Semtner 1976 - in KELVIN
+c          Tbot = -2. + tempCtoK ! quick fix for now! Value used in Semtner 1976 - in KELVIN
+          Tbot = Tfr_ice ! Celcius
 ccc      if ( freezingp == 1 ) then
 ccc          Tbot = -mu*sss ! requires sea surface salinity
 ccc      elseif (freezingp == 2 ) then
 ccc          Tbot = (-0.0575 + 1.710523e-3*SQRT(sss)-2.154996e-4*sss)*sss !we do not have sss input
       endif
+
+      Tsurf = Tsurf - tempCtoK !new
 
       if (sit == 0) then ! there is no ice
           hi = 0.
@@ -1485,22 +1489,28 @@ ccc          hi_old = 0.
           Tsurf = Tfr_ice
       else
 c ------- 1) calculate slab thickness
-          hi = sit/sic
+          hi = sit!/sic JUST USE INPUT FOR NOW
 ccc          hi_old = hi
-          hs = snt/sic
-c          print *, "hi, hs 1",hi,hs
+          hs = snt!/sic JUST USE INPUT FOR NOW
+          print *, "hi, hs 1",hi,hs
+
+          Qia_uw = -Qia
+
+c         Equilibrium met if Tbot = QA/Kstuff + Tsurf
+          print *,"Equib?",Tbot,Qia_uw/(ks/(hs+ks*hi/ki)) + Tsurf
 
 c ------- 2) calculate Tsurf and conductive flux through ice
           Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki)
 c          Tsurf = Tsurf + 0.001
 c          print *, "HH1",Tbot, Tsurf, hs+hs*hi/ki
-c          print *, "HH2",Qic, Qia, dQiadT
+          print *, "HH2",Qic, Qia, dQiadT
 c          print *, "b4 T,flux",Tsurf,(Qic-Qia)/(ks/(hs+ks*hi/ki)+dQiadT)
-          Tsurf = Tsurf + (Qic - Qia)/(ks/(hs+ks*hi/ki) + dQiadT)
+          Tsurf = Tsurf + (Qic - Qia_uw)/(ks/(hs+ks*hi/ki) + dQiadT)
 c          print *, "Tsurf components ",Qic, Qia,ks/(hs+ks*hi/ki)+dQiadT
-c          print *, "Tsurf wants to be ",Tsurf
+          print *, "Tsurf wants to be ",Tsurf,hs
 c         Limit Tsurf to the freezing point of snow or ice
-          if ( hs > 0. ) then
+          Tsurf = Tsurf + tempCtoK
+          if ( hs + hi > 0. ) then
               Tsurf = MIN(0. + tempCtoK, Tsurf)
           else
               Tsurf = MIN(Tfr_ice, Tsurf)
@@ -1533,7 +1543,7 @@ c     del_hs_mlt, mlt_hi_top, mlt_hi_bot, del_hi_s2i, M_tice
 c     INPUTS
 ccc      REAL sic, sit, snt, snwfall, Qia, dQiadT, subl, Tbot
 c      REAL sic, sit, snt, Qia, dQiadT, Tsurf
-      REAL Qia, dQiadT, e0
+      REAL Qia, dQiadT, e0, Qia_uw
       INTEGER dt
 c      REAL dt
 
@@ -1574,6 +1584,8 @@ c     is a namelist option, not just in constants.hpp
       qs = Lf*rhos
       Tfr_ice = -mu*si + tempCtoK ! freezing temp of ice, in KELVIN      
 
+      Qia_uw = -Qia
+
       if ( freezingp == 0 ) then
           Tbot = -2. + tempCtoK ! quick fix for now! Value used in Semtner 1976 - in KELVIN
 ccc      if ( freezingp == 1 ) then
@@ -1611,7 +1623,7 @@ c         snow and sublimation
           
           Lsub = Lf + Lv0 - 240. - 290.*Tsurf - 4*Tsurf*Tsurf ! Latent heat of sublimation
           subl = MAX(0., e0/Lsub) ! Check that this is the correct latent heat flux!
-          del_hs_mlt = MIN(Qia-Qic,0.)*dt/qs
+          del_hs_mlt = MIN(Qia_uw-Qic,0.)*dt/qs
 c          print *, "change hs ",hs," is ",del_hi_mlt," - ",subl*dt/rhos
           hs = hs + del_hi_mlt - subl*dt/rhos
 c         use energy left over after snow melts to melt the ice
@@ -1714,6 +1726,163 @@ c     Outputs: specific humidity (q2m) for use in ABL
       f_h=1.+A_h+mslp_in*1e-2*(B_h+C_h*tp_h*tp_h)
       est_h=a_sh*exp((b_sh-tp_h/d_sh)*tp_h/(tp_h+c_sh))*(1-5.37e-4*sl_h)
       q2m_out = alpha_h*f_h*est_h/(mslp_in - beta_h*f_h*est_h)
+
+      return
+      END
+
+C     Last change:  HR   10 Jan 2025
+c **********************************************************************
+c                          Subroutine Winton2000                       *
+c     description: Calculates surface temperature and fluxes based on  *
+c           ice thickness and snow thickness model inputs              *
+c **********************************************************************
+      SUBROUTINE Winton(dt,Qia,dQiadT,Qsw,sic,sit,snt,Tsurf,T1,T2)
+     
+      IMPLICIT none
+
+      REAL Qia, dQiadT, Qia_uw, Qsw, Qsw_uw !!! CHECK SIGNS!!!
+      INTEGER dt
+
+c     INPUT/OUTPUT  
+      REAL sic, sit, snt, Tsurf,T1,T2
+
+c     FOR CONSTANTS/LOCAL
+      REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
+      REAL qi, qs, Tfr_ice_C, Tbot, tempCtoK, I_0, C, Tfr_surf, Crho
+      REAL Qic, Qio, del_hb, del_ht, draft 
+      INTEGER flooding, freezingp ! an option in nextsim, default true...
+      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+
+      REAL sst, mld, Msurf
+
+      REAL K12_wn,A_wn,B_wn,K32_wn,A1_wn,B1_wn,C1_wn
+
+c --- set constants (these should use constants from header files)
+c     !!! NEEDS TO BE SAME AS NEXTSIM NAMELIST (particularly ks which
+c     is a namelist option, not just in constants.hpp
+      mu = 0.055    ! Proportionality cnst. between salinity and freezing temp of sea water (C)
+      si = 5.       ! sea ice salinity (g/kg)
+      ki = 2.0334   ! heat conductivity of ice (W K^-1 m^-1)
+      ks = 0.3096   ! snow conductivity (W K^-1 m^-1) - check units 
+      freezingp = 0 ! in nextsim, we have LINEAR or UNESCO. Let's say (1) and (2)
+      tempCtoK = 273.15 ! convert temperature from Celcius to Kelvin
+      Lf = 333550.  ! Latent heat of fusion (J/kg)
+      Lv0 = 2500000.! Latent heat of evaporation at 0degC [J/kg] 
+      rhoi = 917.   ! Density of ice (kg/m3)
+      rhos = 330.   ! Density of snow (kg/m3)
+      rhow = 1025.  ! Density of ocean water (kg/m3)
+      hmin = 0.01   ! minimum ice thickness allowed (m)
+      flooding = 0  ! this should maybe an input! True or false...
+      cpw = 4186.84 ! specific heat of seawater [J/K/kg]
+      I_0 = 0.17    ! fraction of sw going into ice
+      C = 2100.     ! Heat capacity of ice (excluding internal melt) [J/K/kg]
+
+      qi = Lf*rhoi
+      qs = Lf*rhos
+      Crho = C*rhoi !!!! WHERE IS THIS USED?
+
+      !!! DO EVERYTHING IN CELCIUS, AS PER NEXTSIM (still confused about
+      !dQiadT...)
+      print *, "Tvals, K, in",Tsurf,T1,T2
+      Tsurf = Tsurf - tempCtoK
+      T1 = T1 - tempCtoK
+      T2 = T2 - tempCtoK
+      print *, "Tvals, C, in",Tsurf,T1,T2
+
+      Tfr_ice_C = -mu*si ! freezing temp of ice, in CELCIUS
+
+      print *, "invals",Qia,Qsw,dQiadT,Tsurf,T1,T2
+
+      if ( freezingp == 0 ) then
+          Tbot = Tfr_ice_C
+c          Tbot = -2. + tempCtoK ! quick fix for now! Value used in Semtner 1976 - in KELVIN
+ccc      if ( freezingp == 1 ) then
+ccc          Tbot = -mu*sss ! requires sea surface salinity
+ccc      elseif (freezingp == 2 ) then
+ccc          Tbot = (-0.0575 + 1.710523e-3*SQRT(sss)-2.154996e-4*sss)*sss !we do not have sss input
+      endif
+
+      if (sit == 0) then ! there is no ice
+          hi = 0.
+ccc          hi_old = 0.
+          hs = 0.
+          Tsurf = Tfr_ice_C !+ tempCtoK
+          T1 = Tfr_ice_C !+ tempCtoK
+          T2 = Tfr_ice_C !+ tempCtoK
+      else
+c ------- 1) calculate slab thickness
+          hi = sit!/sic ! FOR NOW; JUST USE STRAIGHT INPUT
+ccc          hi_old = hi
+          hs = snt! /sic ! FOR NOW: JUST USE STRAIGHT INPUT
+          print *, "hi, hs 1",hi,hs
+
+          Qia_uw = -Qia
+          Qsw_uw = -Qsw
+
+c ------- 2) calculate coefficients
+          K12_wn = 4*ki*ks/(ks*hi + 4*ki*hs)
+          A_wn = Qia_uw - Tsurf*dQiadT
+          B_wn = dQiadT
+          K32_wn = 2*ki/hi
+
+          print *, "coef",K12_wn,A_wn,B_wn,K32_wn
+
+          A1_wn= hi*Crho/(2*dt)  
+     1       + K32_wn*(4*dt*K32_wn + hi*Crho)/(6*dt*K32_wn+hi*Crho)
+     2       + K12_wn*B_wn/(K12_wn+B_wn)
+c         Remember that Tfr_ice = -mu*si!
+          B1_wn = -hi*(Crho*T1 + qi*Tfr_ice_C/T1)/(2*dt) ! second part is in C for it to cancel...)
+     1       - I_0*Qsw_uw      
+     2       -K32_wn*(4*dt*K32_wn*Tbot+hi*Crho*T2)/(6*dt*K32_wn+hi*Crho)
+     3       + A_wn*K12_wn/(K12_wn + B_wn)
+          C1_wn = hi*qi*Tfr_ice_C/(2*dt)
+
+          print *, "coefA",A1_wn,hi,B_wn,K12_wn,K32_wn
+          print *,"coefB",B1_wn,hi,T1,Qsw,K32_wn,K12_wn,A_wn,B_wn,Tbot
+          print *, "coefC",C1_wn,hi,qi,Tfr_ice_C,dt
+
+          if (hs .gt. 0.) then
+            Tfr_surf = 0.  !+ tempCtoK
+          else
+            Tfr_surf = Tfr_ice_C
+          endif
+
+c ------- 3) calculate T1 and Tsurf
+          T1 = -(B1_wn+sqrt(B1_wn*B1_wn-4*A1_wn*C1_wn))/(2*A1_wn)
+          Tsurf = (K12_wn*T1 - A_wn)/(K12_wn + B_wn)
+
+c ------- 4) recalculate if we're melting
+          if (Tsurf .gt. Tfr_surf) then
+            A1_wn = A1_wn+K12_wn - K12_wn*B_wn/(K12_wn + B_wn)
+            B1_wn = B1_wn-K12_wn*Tsurf+A_wn*K12_wn/(K12_wn+B_wn)
+            T1=-(B1_wn+sqrt(B1_wn*B1_wn-4*A1_wn*C1_wn))/(2*A1_wn)
+            print *, "Tvals melting",T1
+
+            Msurf = K12_wn*(T1 - Tsurf) - (A_wn+B_wn*Tsurf)
+          else
+            Msurf = 0
+          endif
+
+          T2=(2*dt*K32_wn*(T1+2*Tbot)+hi*Crho*T2)/(6*dt*K32_wn+hi*Crho)
+
+          !! For now, don't do thickness changes...
+
+      endif
+
+      print *, "Tvals, C, out",Tsurf,T1,T2
+      ! Now turn back to Kelvin
+      Tsurf = Tsurf + tempCtoK
+      T1 = T1 + tempCtoK
+      T2 = T2 + tempCtoK
+      print *, "Tvals, K, out",Tsurf,T1,T2
+
+      if ( hs + hi > 0. ) then
+          Tsurf = MIN(0. + tempCtoK, Tsurf)
+      else
+          Tsurf = MIN(Tfr_ice_C + tempCtoK, Tsurf)
+      endif
+      Tsurf = MAX(Tsurf, 200.) ! Extra check for initial adjustments!
 
       return
       END

@@ -6,7 +6,7 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       PROGRAM test_io
 
-        USE io
+        USE mod_io
 
         IMPLICIT NONE
 

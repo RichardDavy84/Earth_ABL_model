@@ -57,8 +57,8 @@ C------------------------------------------------------------
 C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
-      use physics, only: ustar,ct_atmos,z0, zref, ztop, eta1, deta, rlb,
-     1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
+      use physics_vars, only: ustar,pr,z0,zref,ztop,eta1,deta,rlb,
+     1 betam, betah, gammam, gammah,ct_atmos,alpha, betag, ds, fc, grav,
      2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
      3 wqi0, wt0
 
@@ -95,7 +95,7 @@ C------------------------------------------------------------
 
       REAL*8 tice(nj)
 
-      REAL*8 slon
+      REAL slon
       REAL t850,height_t850,u_in,v_in
       REAL albedo,semis,rlat,emis
       INTEGER Location
@@ -104,7 +104,8 @@ c      REAL*8 u_in,v_in
       INTEGER ds_in
 
       INTEGER nplev
-      INTEGER np,nloc,min_Loc,max_Loc,Loc_non_zero,min_zm,max_zm
+      INTEGER np,nloc,min_Loc,max_Loc,Loc_non_zero
+      REAL min_zm,max_zm
       INTEGER jj_justbelow
       PARAMETER(nplev=12)
       REAL t_hPa(nplev),u_hPa(nplev),v_hPa(nplev),hPa(nplev)
@@ -145,9 +146,10 @@ c--------- Data on celestial dynamics
       DATA nhrs,daysec/24,86165./   
       INTEGER jd ! Julian day - this is input
 c---------Some variables used in surface energy balance calculations
-      REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
-     1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs,ERAgflux
+      REAL albedo1,angv,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rho,
+     1     sdir,sw,swi,fnqs,ERAgflux
       REAL lw_net, sw_net
+      REAL ar,rd,sdec,ss,sh,s0c
 c      REAL ntsw, ntlw, mslhf, msshf
 c---------Function used for calculating saturated specific humidity
       EXTERNAL fnqs
@@ -196,13 +198,14 @@ c      here, read in an input file with defined pressure levels
        nudge_justbelow_bl=0.5
        nudge_below_bl=0.2
 cccccc
-      print *, "TRACK T:1",t(1)
+c      print *, "TRACK T:1",t(1)
 c     INTERPOLATE
 c     STEP 1: create a new array of Locations (shape 12)   
       min_zm=ztop
       max_zm=0.
       do np=1,nplev
-       height_hPa=(((100.*hPa(np)/p0)**(1./5.257)-1.)*(t_hPa(np)))/0.0065 ! Use hypsometric formula to convert T850 to temperature at the nearest height level
+       height_hPa=(((100.*hPa(np)/p0)**(1./5.257)-1.)   
+     1             *(t_hPa(np)))/0.0065 ! Use hypsometric formula to convert T850 to temperature at the nearest height level
        if (t_hPa(np).le.0.) then
          zm_at_p(np)=0.
        else
@@ -315,7 +318,7 @@ c      print *, "T adjustment, ERA = ",t_Pa_to_z
          u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
          v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
       enddo
-      print *, "TRACK T:2",t(1)
+c      print *, "TRACK T:2",t(1)
        ! Finally, for any z values above ERA5 inputs, set u and v to be
        ! the last ERA5 values
        do jj=max_Loc,nj
@@ -482,7 +485,7 @@ c---------Converting potential temperature to the temperature
 	do 120 j=1,nj
 	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
  120    CONTINUE
-      print *, "TRACK T:3",t(1)
+c      print *, "TRACK T:3",t(1)
 
 c---------Calculating turbulent length scales, eddy diffusivity & fluxes
         CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
@@ -516,7 +519,7 @@ c	  enddo
 c==============Calculating waterice cloud formation/sublimation
           qi(1)=qi(2)
         CALL swcond(p,q,qi,t,cp,latent,nj)
-      print *, "TRACK T:4",t(1)
+c      print *, "TRACK T:4",t(1)
 c        print *, "t after swcond", t
 
 c==============Calculating ground energy fluxes
@@ -588,48 +591,20 @@ c       just for printiing!
         enddo
  203    CONTINUE
 
-        wind=SQRT(u(j)**2+v(j)**2)+( SQRT(u(j+1)**2+v(j+1)**2)
-     1                        -SQRT(u(j)**2+v(j)**2) )*
-     2                        alog((zwind/z0+1.)/(zm(j)/z0+1.))
-     3                        /alog((zm(j+1)/z0+1.)/(zm(j)/z0+1.))
+c        wind=SQRT(u(j)**2+v(j)**2)+( SQRT(u(j+1)**2+v(j+1)**2)
+c     1                        -SQRT(u(j)**2+v(j)**2) )*
+c     2                        alog((zwind/z0+1.)/(zm(j)/z0+1.))
+c     3                        /alog((zm(j+1)/z0+1.)/(zm(j)/z0+1.))
 
 cc++++++++++++++Calculating soil temperature
 c       we don't need to do this update of dzeta every time step! ...
 c        ice_snow_thick = (sit + snt)/sic
 c        CALL compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni) ! this is now done just before the loop
 
-c        print *, "T: sit+snt ",sit+snt
         if ((sit + snt).eq.0.) then
-c          print *, "T: set to freezzing"
           t(1) = sst ! 271.15
           tsoil(1) = sst !271.15
-c          print *, "t after soiltdm", t
         else
-c          print *, "T: NOT set to freezzing"
-c          print *, "inputs to soiltdm"
-c          print *, "dedzs"
-c          print *, dedzs
-c          print *, "tsoil"
-c          print *, tsoil
-c          print *, "alternative, t(1) ",t(1)
-c          print *, "zsoil"
-c          print *, zsoil
-c          print *, "dzeta"
-c          print *, dzeta
-c          print *, "snt"
-c          print *, snt
-c          print *, "gflux"
-c          print *, gflux
-c          print *, "ds"
-c          print *, ds
-c          print *, "ni"
-c          print *, ni
-
-c          if (sic.gt.0.) then
-c              hs = snt/sic
-c          else
-c              hs = 0.
-c          endif
            hs = snt
 
 c          print *, "before decisions, t(1) and tsoil are ",t(1),tsoil(1)
@@ -655,7 +630,7 @@ c              print *, "t1 soil setting af ",t(1)
               call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
               ! call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
 c              print *, "Tsurf from thermoIce0",Tsurf_tmp
-              print *, "Tsurf af ",Tsurf_tmp
+c              print *, "Tsurf af ",Tsurf_tmp
               t(1)=Tsurf_tmp
               tsoil(1)=t(1) 
           elseif (do_si_coupling.eq.2) then    
@@ -663,7 +638,7 @@ c              print *, "Tsurf from thermoIce0",Tsurf_tmp
               Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
               call Winton(ds,gflux,dQiadT,sw_net,sic,sit,snt,     
      1               Tsurf_tmp,tsoil(2),tsoil(3)) ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
-              print *, "Tsurf af ",Tsurf_tmp
+c              print *, "Tsurf af ",Tsurf_tmp
               t(1)=Tsurf_tmp
               tsoil(1)=t(1) 
           endif
@@ -696,7 +671,7 @@ c          call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and 
 c          print *, "INTEG new sit and snt",sit,snt
         endif
         betag=grav/t(1)
-      print *, "TRACK T:5",t(1)
+c      print *, "TRACK T:5",t(1)
 c        print *, "T: END LOOP"
 c        print *, "TSOIL_NOW ",tsoil
 

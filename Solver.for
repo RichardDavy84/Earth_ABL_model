@@ -116,7 +116,7 @@ c ............ row elimination with column indexing
  95     continue
  100  continue
 c ------------ assign value for ipvt(n)
- 110  continue
+c 110  continue
         ipvt(n)=n
 c ------------ check to make sure that matrix is not singular
         pvt=abs(a(n,n))

@@ -894,8 +894,8 @@ PROGRAM ABL
             ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
             taur(m,n),                                                      & ! Internal variable
             p0%get_point(m,n), q0_val,                    & ! From file
-            263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
-            ! t0%get_point(m,n), & ! 263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
+            ! 263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
+            t0%get_point(m,n), & ! 263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
             nj,                                                             & ! Number of vertical grid points
             nv,                                                             & ! Always 6?
             dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?

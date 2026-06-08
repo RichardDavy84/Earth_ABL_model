@@ -181,7 +181,7 @@ c       Subroutine SUBGRID  --- calculating grid mesh zm and zt        *
 c======================================================================*
       SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
 
-      USE physics, only: ct_atmos, deta, rlb, eta
+      USE physics_vars, only: ct_atmos, deta, rlb, eta
 
       IMPLICIT none
       INTEGER nj,nw,j,jm
@@ -206,17 +206,17 @@ c
         eta=deta*(j-.5)
         zt(j)=rtsafe(fgrid,x1,x2,eps)
  10   continue
-      WRITE(6,'(//,20x," Calculated Grid Distributions :",//,
-     1             25x," j, zm,zt; zm,zt; zm,zt ")')
+c      WRITE(6,'(//,20x," Calculated Grid Distributions :",//,
+c     1             25x," j, zm,zt; zm,zt; zm,zt ")')
         jm=nj/3*3
-      DO 20 j=1,jm,3
-        WRITE(6,*) j,zm(j),zt(j),zm(j+1),zt(j+1),zm(j+2),zt(j+2)
- 20   CONTINUE
-      IF((jm+1).eq.nj) THEN
-        WRITE(6,*) jm+1,zm(jm+1),zt(jm+1)
-      ELSEIF((jm+2).eq.nj) THEN
-        WRITE(6,*) jm+1,zm(jm+1),zt(jm+1),zm(jm+2),zt(jm+2)
-      ENDIF
+C      DO 20 j=1,jm,3
+C        WRITE(6,*) j,zm(j),zt(j),zm(j+1),zt(j+1),zm(j+2),zt(j+2)
+C 20   CONTINUE
+C      IF((jm+1).eq.nj) THEN
+C        WRITE(6,*) jm+1,zm(jm+1),zt(jm+1)
+C      ELSEIF((jm+2).eq.nj) THEN
+C        WRITE(6,*) jm+1,zm(jm+1),zt(jm+1),zm(jm+2),zt(jm+2)
+C      ENDIF
 c        PAUSE
       DO 30 j=1,nj
 	dedzm(j)=1./(zm(j)+ct_atmos)+1./rlb
@@ -230,7 +230,7 @@ c         Subroutine fgrid --- formula of coordinate transform         *
 c======================================================================*
       SUBROUTINE fgrid(x,f,df)
 
-      USE physics, only: ct_atmos, rlb, eta
+      USE physics_vars, only: ct_atmos, rlb, eta
 
       IMPLICIT none
       REAL x,f,df
@@ -247,7 +247,7 @@ c     Subroutine GEO_DL --- calculate coefficient from Drag_Laws       *
 c======================================================================*
       SUBROUTINE subgdl(fc,z0,angle,aconst,ustar)
 
-      USE physics, only: a, b
+      USE physics_vars, only: a, b
 
       IMPLICIT none
       REAL fc,z0
@@ -268,7 +268,7 @@ c             Subroutine FDLAW --- formula of ABL drag law             *
 c======================================================================*
       SUBROUTINE fdlaw(x,f,df)
 
-      USE physics, only: fc, ug, vg, vk, z0, a, b
+      USE physics_vars, only: fc, ug, vg, vk, z0, a, b
 
       IMPLICIT none
       REAL x,f,df,wspd
@@ -291,44 +291,89 @@ c
 c======================================================================*
 c    Subroutine SUBSOILT  --- calculating initial soil temperature     *
 c======================================================================*
-      SUBROUTINE subsoilt(dedzs,tsoil,zsoil,dzeta,t0,z0,ni)
+      SUBROUTINE subsoilt(dedzs,tsoil,zsoil,dzeta,t0,ct_ice,ni)
+
+      IMPLICIT none
+
       INTEGER ni,i
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,t0,z0
+      REAL dedzs(ni),tsoil(ni),zsoil(ni)
+      REAL dzeta,t0,ct_ice
+      REAL depth
 c
         zsoil(1)=0.
+        dedzs(1)=1./ct_ice
+        tsoil(1)=t0
+c      print *, "HCR zsoil inputs ",z0,dzeta
       DO i=2,ni
-        zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.)
+        if (dzeta.eq.0.) then
+            zsoil(i) = 0.
+            tsoil(i) = t0
+        else
+            depth=ct_ice*(EXP(dzeta*REAL(i-1.))-1.)
+            zsoil(i)=-depth
+            ! dedzs(i)=1./(depth+ct_ice)
+            dedzs(i)=-1./(depth+ct_ice)
+        endif
+c        print *, "HCR zsoil i",zsoil(i)
       ENDDO
       DO i=2,ni
-        dedzs(i)=1./(zsoil(i)+z0)
-        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
+        if (dzeta.ne.0.) then
+         tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
+c         print *, "HCR tsoil",i,zsoil(i),zsoil(ni),tsoil(i)
+        endif
       ENDDO
 c
       end subroutine
 c======================================================================*
 c    Subroutine SUBSOILT_dedzs --- calculating initial ice grid        *
 c======================================================================*
-      SUBROUTINE subsoilt_dedzs(dedzs,zsoil,dzeta,z0,ni)
+      SUBROUTINE subsoilt_dedzs(dedzs,zsoil,dzeta,ct_ice,ni)
+
+      IMPLICIT none
+
       INTEGER ni,i
-      REAL dedzs(ni),zsoil(ni),dzeta,z0
+      REAL dedzs(ni),zsoil(ni),dzeta,ct_ice
+      REAL depth
 c
         zsoil(1)=0.
+        dedzs(1)=1./ct_ice
       DO i=2,ni
-        zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.)
+        if (dzeta.eq.0.) then
+            zsoil(i) = 0.
+        else
+            ! zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.) ! HCR changed 20260603
+            depth=ct_ice*(EXP(dzeta*REAL(i-1))-1.) ! HCR 20260603
+            zsoil(i)=-depth
+            ! dedzs(i)=1./(depth+ct_ice)
+            dedzs(i)=-1./(depth+ct_ice)
+        endif
       ENDDO
-      DO i=2,ni
-        dedzs(i)=1./(zsoil(i)+z0)
+c      DO i=2,ni
+c        if (dzeta.eq.0) then
+c            dedzs(i) = 0.
+c        else
+c            ! dedzs(i)=1./(zsoil(i)+z0) ! HCR changed 20260603, see RD emails
+c        endif
 c        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
-      ENDDO
+c      ENDDO
 c
       end subroutine
 c======================================================================*
 c     Subroutine COMPUTE_dzeta --- calculating dzeta from ice thickness*
 c======================================================================*
       subroutine compute_dzeta(ice_snow_thickness,ct_ice,dzeta,ni)
-      REAL ice_snow_thickness,ct_ice,dzeta
 
-      dzeta=alog(ice_snow_thickness/ct_ice+1.)/(ni-1.)
+      IMPLICIT none
+
+      REAL ice_snow_thickness,ct_ice,dzeta
+      INTEGER ni
+
+      if (ice_snow_thickness.eq.0) then
+          dzeta = 0.
+      else
+          dzeta=alog(ice_snow_thickness/ct_ice+1.)/(ni-1.)
+      endif
+c      print *, "HCR in dzeta thick",ice_snow_thickness
 
       end subroutine
 c======================================================================*
@@ -338,8 +383,8 @@ c======================================================================*
      1  kh,km,tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,
      2  nj)
 
-      USE physics, only: alpha, fc, grav, rl0, tg, ug, vg, vk, deta, pr,
-     1   z0, ustar, uw0, vw0, wq0, wqi0, wt0
+      USE physics_vars, only: alpha, fc, grav, rl0, tg, ug, vg, vk, 
+     1  deta, pr, z0, ustar, uw0, vw0, wq0, wqi0, wt0
 
       implicit none
       INTEGER nj,j
@@ -454,7 +499,7 @@ c======================================================================*
      1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
      2                  nj,nw)
 
-      USE physics, only: alpha, betag, rl0, vk, betam, pr, deta, z0
+      USE physics_vars, only: alpha, betag, rl0, vk, betam, pr, deta, z0
 
       IMPLICIT none
       INTEGER nj,nw,j
@@ -576,7 +621,7 @@ c======================================================================*
       subroutine subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,
      1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
 
-      USE physics, only: alpha, betag, vk, pr, deta, qistar, qstar,
+      USE physics_vars, only: alpha, betag, vk, pr, deta, qistar, qstar,
      1  tstar, ustar, uw0, wq0, vw0, wqi0, wt0, z0
 
       IMPLICIT none
@@ -683,7 +728,7 @@ C           Calculating Monin-Obukhov similarity theory                -
 c-----------------------------------------------------------------------
       subroutine fusrf(x,fus,dfus)
 
-      USE physics, only: betag, rlo, tstar, vk, wind, z0, zref
+      USE physics_vars, only: betag, rlo, tstar, vk, wind, z0, zref
 
       IMPLICIT none
       REAL x,fus,dfus
@@ -701,7 +746,7 @@ c         Function FPHI_M  -  Stability function for wind profile      -
 c----------------------------------------------------------------------*
       FUNCTION fphi_m(zol)
 
-      USE physics, only: betam, gammam
+      USE physics_vars, only: betam, gammam
 
       IMPLICIT none
       REAL fphi_m,zol
@@ -719,7 +764,7 @@ c    Function FPHI_H -- Stability function for temperature & scalars   -
 c----------------------------------------------------------------------*
       FUNCTION fphi_h(zol)
 
-      USE physics, only: betah, gammah, pr
+      USE physics_vars, only: betah, gammah, pr
 
       IMPLICIT none
       REAL fphi_h,zol
@@ -739,7 +784,7 @@ c           Function FPSI_M -- Stability function for wind             -
 c-----------------------------------------------------------------------
       FUNCTION fpsi_m(rlo,zr,z0)
 
-      USE physics, only: betam, gammam
+      USE physics_vars, only: betam, gammam
 
       IMPLICIT none
       REAL fpsi_m,rlo,zr,z0,x,x0
@@ -761,7 +806,7 @@ c     Derivative of stability function for wind with respect of u*     -
 c-----------------------------------------------------------------------
       FUNCTION dfpsi_m(betag,tstar,ustar,vk,zr,zol)
 
-      USE physics, only: betam, gammam
+      USE physics_vars, only: betam, gammam
 
       IMPLICIT none
       REAL dfpsi_m,betag,tstar,ustar,vk,zr,zol,drldus,dxdus,x
@@ -782,7 +827,7 @@ c    Function FPSI_H -- Stability function for temperature & scalars   -
 c-----------------------------------------------------------------------
       FUNCTION fpsi_h(rlo,zr,z0)
 
-      USE physics, only: betah, gammah
+      USE physics_vars, only: betah, gammah
 
       IMPLICIT none
       REAL fpsi_h,rlo,zr,z0,x,x0
@@ -936,7 +981,7 @@ c***********************************************************************
       SUBROUTINE coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,t,u,v,uw,vw,dedzm,
      1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
 
-      USE physics, only: alpha, betag, deta, ds, fc, ug, vg, zero
+      USE physics_vars, only: alpha, betag, deta, ds, fc, ug, vg, zero
 
       IMPLICIT none
       INTEGER nj,nv,nw,ipvt(nv)
@@ -1492,22 +1537,22 @@ c ------- 1) calculate slab thickness
           hi = sit!/sic JUST USE INPUT FOR NOW
 ccc          hi_old = hi
           hs = snt!/sic JUST USE INPUT FOR NOW
-          print *, "hi, hs 1",hi,hs
+c          print *, "hi, hs 1",hi,hs
 
           Qia_uw = -Qia
 
 c         Equilibrium met if Tbot = QA/Kstuff + Tsurf
-          print *,"Equib?",Tbot,Qia_uw/(ks/(hs+ks*hi/ki)) + Tsurf
+c          print *,"Equib?",Tbot,Qia_uw/(ks/(hs+ks*hi/ki)) + Tsurf
 
 c ------- 2) calculate Tsurf and conductive flux through ice
           Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki)
 c          Tsurf = Tsurf + 0.001
 c          print *, "HH1",Tbot, Tsurf, hs+hs*hi/ki
-          print *, "HH2",Qic, Qia, dQiadT
+c          print *, "HH2",Qic, Qia, dQiadT
 c          print *, "b4 T,flux",Tsurf,(Qic-Qia)/(ks/(hs+ks*hi/ki)+dQiadT)
           Tsurf = Tsurf + (Qic - Qia_uw)/(ks/(hs+ks*hi/ki) + dQiadT)
 c          print *, "Tsurf components ",Qic, Qia,ks/(hs+ks*hi/ki)+dQiadT
-          print *, "Tsurf wants to be ",Tsurf,hs
+c          print *, "Tsurf wants to be ",Tsurf,hs
 c         Limit Tsurf to the freezing point of snow or ice
           Tsurf = Tsurf + tempCtoK
           if ( hs + hi > 0. ) then
@@ -1608,7 +1653,7 @@ ccc          del_hi = 0.
 c ------- 1) calculate slab thickness
 c          print *, "si inputs",sit,sic,snt
           hi = sit/sic
-ccc          hi_old = hi
+          hi_old = hi
           hs = snt/sic
 
 c ------- 2) calculate Tsurf and conductive flux through ice
@@ -1625,7 +1670,7 @@ c         snow and sublimation
           subl = MAX(0., e0/Lsub) ! Check that this is the correct latent heat flux!
           del_hs_mlt = MIN(Qia_uw-Qic,0.)*dt/qs
 c          print *, "change hs ",hs," is ",del_hi_mlt," - ",subl*dt/rhos
-          hs = hs + del_hi_mlt - subl*dt/rhos
+          hs = hs + del_hs_mlt - subl*dt/rhos
 c         use energy left over after snow melts to melt the ice
           del_ht = MIN(hs, 0.)*qs/qi
 c         can't have negative hs
@@ -1727,6 +1772,108 @@ c     Outputs: specific humidity (q2m) for use in ABL
       est_h=a_sh*exp((b_sh-tp_h/d_sh)*tp_h/(tp_h+c_sh))*(1-5.37e-4*sl_h)
       q2m_out = alpha_h*f_h*est_h/(mslp_in - beta_h*f_h*est_h)
 
+      return
+      END
+
+c **********************************************************************
+c                       Subroutine Check_SIC                           *
+c     description: Checks that sea ice concentrations sum to 1 after   *
+c                    interpolation onto grid                           *
+c **********************************************************************
+      SUBROUTINE check_seaice_values(si_concs,si_thicks,sn_thicks,ncats)
+c     Inputs: d2m and mslp from forcing
+c     Outputs: specific humidity (q2m) for use in ABL
+      
+      IMPLICIT none
+ 
+      INTEGER ncats, ncnt 
+      REAL si_concs(ncats), si_thicks(ncats), sn_thicks(ncats)
+      REAL sea_ice_sum, min_val_c, min_val_t
+
+      min_val_c = 0.0001
+      min_val_t = 0.0001
+
+      ! Start with thickness - if ice too thin, remove that category
+      ! Boost the concentration of the earlier thickness category (unless it's
+      ! 1, in which case boost the next one)
+      if (si_thicks(1) + sn_thicks(1).lt.min_val_t) then
+         if (ncats.gt.1) then
+            si_concs(2) = si_concs(2) + si_concs(1)
+            ! should I convert the thickness to shift over? Haven't for now...
+           si_concs(1) = 0.
+           si_thicks(1) = 0.
+           sn_thicks(1) = 0.
+         endif      
+      endif
+      print *, "si tots 1a, ",si_concs(1),si_thicks(1) 
+
+      if (ncats.gt.1) then
+         do ncnt=2,ncats-1
+           ! Check 1: is ice+snow thickness ok? NOT RELEVANT FOR OPEN WATER
+           ! (ncnt=ncats)
+           if (si_thicks(ncnt) + sn_thicks(ncnt).lt.min_val_t) then
+             si_concs(ncnt-1) = si_concs(ncnt-1) + si_concs(ncnt)
+             ! should I convert the thickness to shift over? Haven't for now...
+             si_concs(ncnt) = 0.
+             si_thicks(ncnt) = 0.
+             sn_thicks(ncnt) = 0.
+           endif      
+           print *, "tots 1b",si_concs(ncnt),si_thicks(ncnt)
+         enddo
+      endif
+
+      ! Now go through concentrations - check against minimum value, and then
+      ! see if the sum is ok
+      si_concs(1) = MIN(MAX(si_concs(1),0.),1.)
+      sea_ice_sum = si_concs(1)
+      if (si_concs(1).lt.min_val_c) then
+         si_concs(1) = 0.
+         si_thicks(1) = 0.
+         sn_thicks(1) = 0.
+      endif
+
+      if (ncats.gt.1) then
+         do ncnt=2,ncats
+           ! Check 2: do any need to be rounded?
+           print *, "si tots 2b4, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
+           si_concs(ncnt) = MIN(MAX(si_concs(ncnt),0.),1.)
+           if (si_concs(ncnt).lt.min_val_c) then
+               ! add this into the category before and set this to zero
+               si_concs(ncnt-1) = si_concs(ncnt-1) + si_concs(ncnt)
+               si_concs(ncnt) = 0.
+               si_thicks(ncnt) = 0.
+               sn_thicks(ncnt) = 0.
+           endif
+           print *, "si tots 2af, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
+         enddo
+      endif
+
+      if (ncats.gt.1) then
+         ! Check 3: do they sum to greater than 1?
+         do ncnt=2,ncats
+           print *, "si tots 3b4, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
+           si_concs(ncnt) = MIN(MAX(si_concs(ncnt),0.),1.)
+           if (sea_ice_sum + si_concs(ncnt).gt.1.) then
+             print *, "tots gt 1"
+             si_concs(ncnt) = 1. - sea_ice_sum
+             if (si_concs(ncnt).lt.min_val_c) then
+                 si_concs(ncnt-1) = si_concs(ncnt-1) + si_concs(ncnt)
+                 si_concs(ncnt) = 0.
+             endif
+           elseif (sea_ice_sum + si_concs(ncnt).lt.0.) then
+             print *, "tots lt 0"
+             si_concs(ncnt) = 0.
+           endif
+           if (si_concs(ncnt).eq.0.) then
+              print *, "tots eq 0"
+              si_thicks(ncnt) = 0.
+              sn_thicks(ncnt) = 0.
+           endif
+           sea_ice_sum = sea_ice_sum + si_concs(ncnt)
+           print *, "si tots 3af, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
+         enddo
+      endif 
+         
       return
       END
 

@@ -42,10 +42,10 @@ C----------! Outputs are the initial values for mean and turbulent quantities, a
 C 
 C.  nj,nv,dedzm,dedzt,zm,zt,	u,v,t,q,qi,	e,ep,uw,vw,wt,wq,wqi,km,kh,ustar 
 C-------------------------------------------------------------
-
-      use physics, only: ustar,ct_atmos,z0, zref, ztop, eta1, deta, rlb,
-     1 betam, betah, gammam, gammah, pr, alpha, betag, ds, fc, grav,
-     2 rl0, tg, ug, vg, vk, zero
+      USE physics_vars, only: ustar,ct_atmos,z0, zref, ztop, eta1, 
+     1 deta, rlb, betam, betah, gammam, gammah, pr, alpha, betag, 
+     2 fc, grav, rl0, tg, ug, vg, vk, zero
+c     2 ds, fc, grav, rl0, tg, ug, vg, vk, zero
 
       IMPLICIT none
       INTEGER ni,nj,nv,nw,ir
@@ -103,14 +103,16 @@ c---------Integer variables used for the do-loops
       REAL daysec,hoursec
       DATA nhrs,daysec/24,86165./   !86164, 86400
 c---------Some variables used in surface energy balance calculations
-      REAL albedo1,angv,ar,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rd,rho,
+      REAL albedo1,angv,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rho,
      1     s0c,sdec,sdir,sh,ss,sw,swi,fnqs
+      REAL*8 ar,rd
 
       REAL u_in,v_in
 c      INTEGER np,nplev
 c      PARAMETER(nplev=12)
 c      REAL u_in(nplev),v_in(nplev)
-      REAL ustar_in,z0_in,ds_in
+      REAL ustar_in,z0_in
+c      INTEGER ds_in
       REAL ct_ice,ice_snow_thick
 
 c---------Function used for calculating saturated specific humidity
@@ -130,7 +132,7 @@ c     2    e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in)
       ustar = ustar_in
       z0 = z0_in
 c      ds_in = ds_in
-      ds = ds_in
+c      ds = ds_in
 
       grav=9.807    ! Some more general constants 
       vk=.4         ! von Karman constant
@@ -170,7 +172,7 @@ c        ct_atmos=.1              ! =0.1 (Roughness for coordinate tranform) ! S
         zref=0
 c        ztop=3000. ! Was 30000, but can be changed
 c        ztop=4000. ! Was 30000, but can be changed
-      print *, "ztop ",ztop
+c      print *, "ztop ",ztop
       eta1=alog(zref/ct_atmos+1.)+zref/rlb
       deta=(alog(ztop/ct_atmos+1.)+ztop/rlb)/(nj-1.)
 
@@ -203,11 +205,11 @@ c---------Calculating initial profiles
         call compute_dzeta(ice_snow_thick,ct_ice,dzeta,ni)
 c          dzeta=alog(.2/z0+1.)/(ni-1.)
         call subsoilt(dedzs,tsoil,zsoil,dzeta,t(1),ct_ice,ni)
-        print *, "initialised tsoil ",tsoil
+c        print *, "initialised tsoil ",tsoil
 
 c---------Output initial data and profiles
       open(11,file='CONSTANT.dat')
-	write(11,'(/,12x,"Time step (dt)=",f5.2)') ds
+c	write(11,'(/,12x,"Time step (dt)=",f5.2)') ds
 	write(11,'(//,"   alpha,deta,z0 =",5e14.6)') alpha,deta,z0
 	write(11,'(/,"   rssby,rl0,bl  =",5e14.6)') ug/fc/z0,rl0,rlb
 	write(11,'(/,"   blh,nj,nv     =",e14.6,2i10)') ztop,nj,nv
@@ -218,9 +220,9 @@ c---------Output initial data and profiles
         open(12,file='TURB-INI.dat')
           call turbout(zm,zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,nj,12)
         close(12)
-c      open(11,file='TSOILINI.dat')
-c        call stempout(tsoil,zsoil,ni,11)
-c      close(11)
+      open(11,file='TSOILINI.dat')
+        call stempout(tsoil,zsoil,ni,11)
+      close(11)
 
       return
       END

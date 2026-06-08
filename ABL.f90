@@ -25,8 +25,8 @@
 PROGRAM ABL
 
   use omp_lib
-  use io
-  use physics, only: ztop, rlb, ct_atmos
+  use mod_io
+  use physics_vars, only: ztop, rlb, ct_atmos
 
   !-------------! Inputs needed are:
   !.  albedo - Surface albedo
@@ -56,6 +56,8 @@ PROGRAM ABL
 !  PARAMETER(nj=31,nv=6,ni=11)
 
   INTEGER, PARAMETER :: dbl=8
+
+  INTEGER :: tid
 
   ! integer :: time_start, time_finish, count_rate
   ! real :: time_elapsed
@@ -150,6 +152,7 @@ PROGRAM ABL
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
   INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_level, read_sst
+  INTEGER :: print_out
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -158,7 +161,8 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Misc internal variables
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, mnt_out_ds, n_si
+  INTEGER :: jm, jh, jd, hr_out, mnt_out, m, n, nmts, n_si, n_si2
+  INTEGER :: mnt_out_ds
   INTEGER :: ds
   INTEGER :: merge_ds, merge_cnt
   CHARACTER(LEN=256) :: fname, lon_name, lat_name, mask_name
@@ -167,13 +171,15 @@ PROGRAM ABL
 !  INTEGER, PARAMETER :: hoursec = 86400
   INTEGER, PARAMETER :: hoursec = 3600
   REAL, PARAMETER :: pi=4.*ATAN(1.)
-  REAL(KIND=8) :: slon
+  REAL(KIND=4) :: slon
 
   INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
   REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init, const_ct_ice
   REAL, DIMENSION(:), ALLOCATABLE :: const_albedo, const_semis
 
   REAL :: q0_val
+
+  INTEGER :: time_c, time_cr, time_cm
 
 !  REAL :: height_hPa
  
@@ -185,6 +191,7 @@ PROGRAM ABL
   namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
+  namelist /debug_info/ print_out
 
   open(unit=10, file='setup_info.nml', status='old')
   read(10, nml=grid_info)
@@ -202,6 +209,7 @@ PROGRAM ABL
   ALLOCATE(const_semis(n_surf_cat))
 
   read(10, nml=constants_info)
+  read(10, nml=debug_info)
 
   close(10)
 
@@ -222,7 +230,12 @@ PROGRAM ABL
   !lat_name = "plat"
   !mask_name = "mask"
 
+  ! CALL system_clock(time_c, time_cr, time_cm)
+  ! print *, "HCR time start: ",time_c, time_cr, time_cm
   CALL read_grid(fname, lon_name, lat_name, mask_name, mgr, ngr, rlon, rlat, mask)
+
+  ! CALL system_clock(time_c, time_cr, time_cm)
+  ! print *, "HCR time after read grid: ", time_c, time_cr, time_cm
 
   print *, "Read ", fname
   print *, "mgr = ", mgr
@@ -262,6 +275,10 @@ PROGRAM ABL
     ncat = n_surf_cat
   endif
 
+  if (print_out.eq.1) then
+      print *, "about to allocate arrays"
+  endif
+
   !===================Allocate arrays
   ALLOCATE(ustar(mgr,ngr))
   ALLOCATE(taur, blht, rif_blht, blht_max, sst, mold = ustar)
@@ -289,6 +306,10 @@ PROGRAM ABL
   ALLOCATE(gflux(mgr,ngr,ncat))
   ALLOCATE(lw_net,sw_net,h0,e0,mold=gflux)
 
+  if (print_out.eq.1) then
+      print *, "allocated arrays"
+  endif
+
   ! Initialise input files and read initial field
   ! example code for p0
   ! Initial conditions
@@ -298,6 +319,12 @@ PROGRAM ABL
       call d0%init("d2m",forcing_dir, rlon, rlat, time0, "ERA")
   else
       call q0%init("q2m",forcing_dir, rlon, rlat, time0, "ERA")
+  endif
+
+  if (print_out.eq.1) then
+      print *, "initial conditions p0, t0, d0 done"
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
   endif
 
 !  hPa(1)=700.
@@ -316,8 +343,17 @@ PROGRAM ABL
   zp = (/ 1000.,975.,950.,925.,900.,875.,850.,825.,800.,775.,750.,700. /)
 
   ! Time dependent forcing
+  if (print_out.eq.1) then
+      print *, "about to read in ERA5 pressure levels"
+  endif
   call u850_now%init("u850", forcing_dir, rlon, rlat, time0, "ERA")
+  if (print_out.eq.1) then
+      print *, "u850 now done"
+  endif
   call u850_next%init("u850", forcing_dir, rlon, rlat, time0, "ERA")
+  if (print_out.eq.1) then
+      print *, "u850 next done"
+  endif
 
   call v850_now%init("v850", forcing_dir, rlon, rlat, time0, "ERA")
   call v850_next%init("v850", forcing_dir, rlon, rlat, time0, "ERA")
@@ -325,6 +361,11 @@ PROGRAM ABL
   call t850_now%init("t850", forcing_dir, rlon, rlat, time0, "ERA")
   call t850_next%init("t850", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 700"
+  endif
   call u700_now%init("u700", forcing_dir, rlon, rlat, time0, "ERA")
   call u700_next%init("u700", forcing_dir, rlon, rlat, time0, "ERA")
   call v700_now%init("v700", forcing_dir, rlon, rlat, time0, "ERA")
@@ -332,6 +373,11 @@ PROGRAM ABL
   call t700_now%init("t700", forcing_dir, rlon, rlat, time0, "ERA")
   call t700_next%init("t700", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 750"
+  endif
   call u750_now%init("u750", forcing_dir, rlon, rlat, time0, "ERA")
   call u750_next%init("u750", forcing_dir, rlon, rlat, time0, "ERA")
   call v750_now%init("v750", forcing_dir, rlon, rlat, time0, "ERA")
@@ -339,6 +385,11 @@ PROGRAM ABL
   call t750_now%init("t750", forcing_dir, rlon, rlat, time0, "ERA")
   call t750_next%init("t750", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 775"
+  endif
   call u775_now%init("u775", forcing_dir, rlon, rlat, time0, "ERA")
   call u775_next%init("u775", forcing_dir, rlon, rlat, time0, "ERA")
   call v775_now%init("v775", forcing_dir, rlon, rlat, time0, "ERA")
@@ -346,6 +397,11 @@ PROGRAM ABL
   call t775_now%init("t775", forcing_dir, rlon, rlat, time0, "ERA")
   call t775_next%init("t775", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 800"
+  endif
   call u800_now%init("u800", forcing_dir, rlon, rlat, time0, "ERA")
   call u800_next%init("u800", forcing_dir, rlon, rlat, time0, "ERA")
   call v800_now%init("v800", forcing_dir, rlon, rlat, time0, "ERA")
@@ -353,6 +409,11 @@ PROGRAM ABL
   call t800_now%init("t800", forcing_dir, rlon, rlat, time0, "ERA")
   call t800_next%init("t800", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 825"
+  endif
   call u825_now%init("u825", forcing_dir, rlon, rlat, time0, "ERA")
   call u825_next%init("u825", forcing_dir, rlon, rlat, time0, "ERA")
   call v825_now%init("v825", forcing_dir, rlon, rlat, time0, "ERA")
@@ -360,6 +421,11 @@ PROGRAM ABL
   call t825_now%init("t825", forcing_dir, rlon, rlat, time0, "ERA")
   call t825_next%init("t825", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 875"
+  endif
   call u875_now%init("u875", forcing_dir, rlon, rlat, time0, "ERA")
   call u875_next%init("u875", forcing_dir, rlon, rlat, time0, "ERA")
   call v875_now%init("v875", forcing_dir, rlon, rlat, time0, "ERA")
@@ -367,6 +433,11 @@ PROGRAM ABL
   call t875_now%init("t875", forcing_dir, rlon, rlat, time0, "ERA")
   call t875_next%init("t875", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 900"
+  endif
   call u900_now%init("u900", forcing_dir, rlon, rlat, time0, "ERA")
   call u900_next%init("u900", forcing_dir, rlon, rlat, time0, "ERA")
   call v900_now%init("v900", forcing_dir, rlon, rlat, time0, "ERA")
@@ -374,6 +445,11 @@ PROGRAM ABL
   call t900_now%init("t900", forcing_dir, rlon, rlat, time0, "ERA")
   call t900_next%init("t900", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 925"
+  endif
   call u925_now%init("u925", forcing_dir, rlon, rlat, time0, "ERA")
   call u925_next%init("u925", forcing_dir, rlon, rlat, time0, "ERA")
   call v925_now%init("v925", forcing_dir, rlon, rlat, time0, "ERA")
@@ -381,6 +457,11 @@ PROGRAM ABL
   call t925_now%init("t925", forcing_dir, rlon, rlat, time0, "ERA")
   call t925_next%init("t925", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 950"
+  endif
   call u950_now%init("u950", forcing_dir, rlon, rlat, time0, "ERA")
   call u950_next%init("u950", forcing_dir, rlon, rlat, time0, "ERA")
   call v950_now%init("v950", forcing_dir, rlon, rlat, time0, "ERA")
@@ -388,6 +469,11 @@ PROGRAM ABL
   call t950_now%init("t950", forcing_dir, rlon, rlat, time0, "ERA")
   call t950_next%init("t950", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 975"
+  endif
   call u975_now%init("u975", forcing_dir, rlon, rlat, time0, "ERA")
   call u975_next%init("u975", forcing_dir, rlon, rlat, time0, "ERA")
   call v975_now%init("v975", forcing_dir, rlon, rlat, time0, "ERA")
@@ -395,6 +481,11 @@ PROGRAM ABL
   call t975_now%init("t975", forcing_dir, rlon, rlat, time0, "ERA")
   call t975_next%init("t975", forcing_dir, rlon, rlat, time0, "ERA")
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 pressure levels 1000"
+  endif
   call u1000_now%init("u1000", forcing_dir, rlon, rlat, time0, "ERA")
   call u1000_next%init("u1000", forcing_dir, rlon, rlat, time0, "ERA")
   call v1000_now%init("v1000", forcing_dir, rlon, rlat, time0, "ERA")
@@ -403,6 +494,11 @@ PROGRAM ABL
   call t1000_next%init("t1000", forcing_dir, rlon, rlat, time0, "ERA")
 
   !! Added by HCR
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in ERA5 srf"
+  endif
   call sdlw_now%init("msdwlwrf", forcing_dir, rlon, rlat, time0, "ERA")
   call sdlw_next%init("msdwlwrf", forcing_dir, rlon, rlat, time0, "ERA")
 
@@ -417,6 +513,11 @@ PROGRAM ABL
       call q2m_next%init("q2m", forcing_dir, rlon, rlat, time0, "ERA")
   endif
 
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "about to read in init seaice"
+  endif
   call sic_now%init("sic",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sit_now%init("sit",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call snt_now%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -426,6 +527,12 @@ PROGRAM ABL
 
   call sst_now%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
   call sst_next%init("sst",seaice_ics_dir, rlon, rlat, time0,"Moorings")
+  
+  if (print_out.eq.1) then
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+      print *, "set up forcings"
+  endif
 
   if (si_ics_ftype == "Moorings") then
       mooring_or_superice = 1
@@ -446,6 +553,9 @@ PROGRAM ABL
           call snt_init%init("snt",seaice_ics_dir, rlon, rlat, time0,"Moorings")
           call snt_init%read_input(time0, "Moorings")
           if (n_surf_cat.gt.2) then
+              if (print_out.eq.1) then
+                  print *, "in_surf_cat > 2: reading sic2_init"
+              endif
               call sic2_init%init("sic_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
               call sic2_init%read_input(time0, "Moorings")
               call sit2_init%init("sit_young",seaice_ics_dir, rlon, rlat, time0,"Moorings")
@@ -459,55 +569,74 @@ PROGRAM ABL
           ! WHAT TO DO FOR SNOW???
       endif
   endif  
-
-  print *, "initialised some"
+  
+  if (print_out.eq.1) then
+      print *, "initialised some"
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+  endif
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Initialisation
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  print *, "reading sic_now"
+  if (print_out.eq.1) then
+      print *, "reading sic_now"
+  endif
   call sic_now%read_input(time0, "Moorings")
-  print *, "read_input some a1"
+  if (print_out.eq.1) then
+      print *, "read_input some a1"
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+  endif
   call sit_now%read_input(time0, "Moorings")
-  print *, "read_input some a2"
+  if (print_out.eq.1) then
+      print *, "read_input some a2"
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+  endif
   call snt_now%read_input(time0, "Moorings")
-  print *, "read_input some a3"
+  if (print_out.eq.1) then
+      print *, "read_input some a3"
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+  endif
   if (read_sst.eq.1) then
       call sst_now%read_input(time0, "Moorings")
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
   endif
 
   slon = (time%yearday()/365.2425)*360
   call p0%read_input(time0, "ERA")
-  print *, "read_input some b"
   call t0%read_input(time0, "ERA")
-  print *, "read_input some c"
   if (use_d2m.eq.1) then
       call d0%read_input(time0, "ERA")
   else
       call q0%read_input(time0, "ERA")
   endif
-  print *, "read_input some d"
   call u850_now%read_input(time0, "ERA")
-  print *, "read_input some e"
   call v850_now%read_input(time0, "ERA")
 
-  print *, "read_input some f"
+  if (print_out.eq.1) then
+      print *, "read_inputs before loop begins "
+      CALL system_clock(time_c, time_cr, time_cm)
+      print *, "HCR time: ", time_c, time_cr, time_cm
+  endif
 
   if (do_si_coupling.eq.1) then
     ni = 3 ! for Winton; othewise, use setup input for soil model
   endif
 
- 
+  ! HCRadd Try initialising all cells of zsoil and tsoil as mask first
+  tsoil(:,:,:,:) = land_value
+  zsoil(:,:,:,:) = land_value
+
   do m = 1, mgr
    do n = 1, ngr
 
     ! Skip the land points
-    print *, " mask(m,n) ", mask(m,n)
-    if ( mask(m,n) .eq. land_value ) then
-       print *, "land: NOT CONTINUING, ",m,n
-    endif       
+    ! print *, "HCR how is mask here",mask(m,n),m,n    
     if ( mask(m,n) .ne. land_value ) then ! continue
-       print *, " not land: continuing",m,n
 
        u_hPa(m,n,12) = u700_now%get_point(m,n)
        u_hPa(m,n,11) = u750_now%get_point(m,n)
@@ -554,7 +683,7 @@ PROGRAM ABL
       do n_si = 1,ncat
         z0(m,n,n_si) = const_z0(n_si) ! this is the surface roughness I believe
       enddo
-      ! Now read in sea ice ICs
+      ! Now read in sea ice ICs if we want
       if (do_si_ics.eq.1) then
         sst(m,n) = 271.15 !set to freezing point
         do n_si = 1,ncat
@@ -587,6 +716,37 @@ PROGRAM ABL
             sic(m,n,1) = 1
           endif
         endif
+
+        !!!!!!!!!!!!!!!!!!!!!
+        ! HCRadd added a buffer for the interpolation - i.e. correct if weirdish
+        ! if ( (m.eq.1).AND.(n.eq.8) ) then
+        !     print *, "HCRadd what are sics",sic(m,n,:)
+        !     print *, "HCRadd what are sits",sit(m,n,:)
+        !     print *, "HCRadd what are snts",snt(m,n,:)
+        ! endif
+        do n_si = 1,ncat-1
+          if ( (sic(m,n,n_si) .gt. 1.0) .AND. (sic(m,n,n_si) .lt. 1.2) ) then
+             ! print *, "HCRadd range check max b4",m,n,n_si, sic(m,n,:)
+             ! added a buffer for the interpolation
+             sic(m,n,n_si) = 1.
+             do n_si2 = 1,ncat-1
+                 if (n_si.ne.n_si2) then
+                     sic(m,n,n_si2) = 0.
+                 endif
+             enddo
+             ! print *, "HCRadd range check max af",m,n,n_si, sic(m,n,:)
+          endif
+        enddo
+        do n_si = 1,ncat-1
+          if ( (sic(m,n,n_si) .lt. 0.) .AND. (sic(m,n,n_si) .gt. -0.2) ) then
+             ! print *, "HCRadd range check max b4",m,n,n_si, sic(m,n,:)
+             ! added a buffer for the interpolation
+             sic(m,n,n_si) = 0. !don't worry about not summing to 1 - last ncat takes care of that below
+             ! print *, "HCRadd range check max af",m,n,n_si, sic(m,n,:)
+          endif
+        enddo
+        !!!!!!!!!!!!!!!!
+
         ! scaling. If not, it is land and we don't compute it      
         if ( (sic(m,n,1).ge.0) .AND. (sic(m,n,1).le.1)) then       
           if ( mooring_or_superice.eq.1 ) then
@@ -619,7 +779,7 @@ PROGRAM ABL
                 if (sic(m,n,1).gt.0) then
                     ! nextsim-specific handling where divide by sic
                     ! For thick category:
-                    sit(m,n,1)=(sit_init%get_point(m,n)-sit2_init%get_point(m,n))/(sic_init%get_point(m,n) - sic2_init%get_point(m,n))
+                    sit(m,n,1)=(sit_init%get_point(m,n)-sit2_init%get_point(m,n))/(sic_init%get_point(m,n)-sic2_init%get_point(m,n))
                     snt(m,n,1) = snt_init%get_point(m,n)/sic_init%get_point(m,n) ! for now, make same thickness as on thick ice
                     ! open water conc
                     sic(m,n,ncat) = sic(m,n,ncat) - sic(m,n,1)
@@ -639,6 +799,8 @@ PROGRAM ABL
                 endif
                 ice_snow_thick(m,n,1) = sit(m,n,1) + snt(m,n,1)
                 ice_snow_thick(m,n,2) = sit(m,n,2) + snt(m,n,2)
+                ! print *, "HCR thick1",m,n,sit(m,n,1),snt(m,n,1),ice_snow_thick(m,n,1)
+                ! print *, "HCR thick2",m,n,sit(m,n,2),snt(m,n,2),ice_snow_thick(m,n,2)
             elseif (ncat.gt.3) then
                 ! in this situation, just loop over remaining categories for inputs from the constants (if any categories left)
                 do n_si = 3,ncat-1
@@ -670,11 +832,15 @@ PROGRAM ABL
             endif
           endif
         else
-          mask(m,n) = land_value
+          mask(m,n) = land_value ! this is in response to the original: if ( (sic(m,n,1).ge.0) .AND. (sic(m,n,1).le.1)) then       
+          ! so it means that our sea ice input does not think there is data...
+          ! print *, "HCR where mask modified",m,n,sic(m,n,1)
           do n_si = 1,ncat
-            sic(m,n,n_si) = 0.
-            sit(m,n,n_si) = 0.
-            snt(m,n,n_si) = 0.
+            sic(m,n,n_si) = land_value
+            sit(m,n,n_si) = land_value
+            snt(m,n,n_si) = land_value
+            tsoil(m,n,:,n_si) = land_value
+            zsoil(m,n,:,n_si) = land_value
           enddo      
         endif 
       endif
@@ -689,10 +855,29 @@ PROGRAM ABL
      
       ! Do some initialising
       dedzs(m,n,:,:) = 0.
+      print *, "HCR initialising tsoil ",m,n
       tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
       zsoil(m,n,:,:) = 0.
+      if ( m .eq. 1 ) then
+          if (n .eq. 4 ) then
+              print *, "HCRadd tsoil",tsoil(m,n,:,:)
+              print *, "HCRadd mask",mask(m,n)
+          endif
+      endif
+
+
+      print *, "sic tots b4: ",sic(m,n,1),sic(m,n,2),sic(m,n,3),sic(m,n,1)+sic(m,n,2)+sic(m,n,3)
+      print *, "sit tots b4: ",sit(m,n,1),sit(m,n,2),sit(m,n,3)
+      call check_seaice_values(sic(m,n,:),sit(m,n,:),snt(m,n,:),ncat)
+      print *, "sic tots af: ",sic(m,n,1),sic(m,n,2),sic(m,n,3),sic(m,n,1)+sic(m,n,2)+sic(m,n,3)
+      print *, "sit tots af: ",sit(m,n,1),sit(m,n,2),sit(m,n,3)
 
       do n_si = 1,ncat
+          if (print_out.eq.1) then
+              print *, "about to initialise for ", m, n, ncat
+          endif
+          print *, "about to initialise for ", m, n, ncat
+          print *, "ice thick going in: ", m,n,ncat,ice_snow_thick(m,n,n_si)
     !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
           if (use_d2m.eq.1) then
               call SpecHum_from_d2m(d0%get_point(m,n), p0%get_point(m,n), q0_val)
@@ -710,6 +895,7 @@ PROGRAM ABL
             taur(m,n),                                                      & ! Internal variable
             p0%get_point(m,n), q0_val,                    & ! From file
             263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
+            ! t0%get_point(m,n), & ! 263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
             nj,                                                             & ! Number of vertical grid points
             nv,                                                             & ! Always 6?
             dedzm,dedzt,zm,zt,                                              & ! Output grid definitions?
@@ -719,9 +905,14 @@ PROGRAM ABL
             vw_each_cat(m,n,:,n_si), wt_each_cat(m,n,:,n_si),                            & ! prognostics
             wq_each_cat(m,n,:,n_si), wqi_each_cat(m,n,:,n_si), km_each_cat(m,n,:,n_si),  &
             kh_each_cat(m,n,:,n_si), ustar_each_cat(m,n,n_si),                           & ! prognostics
-            p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        &    ! prognostics
+            p_each_cat(m,n,:,n_si), tld_each_cat(m,n,:,n_si), ni,                        & ! prognostics
             dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),                       &
             dzeta(m,n,n_si),ice_snow_thick(m,n,n_si) )           ! for "soil" temperatures !!! CHECK THIS IS RIGHT!
+          if (print_out.eq.1) then
+              print *, "initialised for ", m, n, ncat
+              CALL system_clock(time_c, time_cr, time_cm)
+              print *, "HCR timeAF: ",time_c,time_cr,time_cm,m,n,ncat
+          endif
       enddo
  
       blht_max(m,n) = -1. ! blht(m,n) is not yet set! Just try setting to 50 m
@@ -729,6 +920,10 @@ PROGRAM ABL
     endif 
    enddo
   enddo
+
+  if (print_out.eq.1) then
+      print *, "about to initialise output files "
+  endif
 
   ! Initialise output files
   call srfv_all%init('SRFV-ALL.nc', mgr, ngr, mask, rlon, rlat)
@@ -922,6 +1117,12 @@ PROGRAM ABL
 !$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
 !$OMP& FIRSTPRIVATE(time, merge_cnt, loaded_already)
 
+  tid = omp_get_thread_num()
+
+  !$OMP CRITICAL
+    print *, "hello from thread", tid
+  !$OMP END CRITICAL
+
   print *, "about to start"
   do while ( time <= time1 )
     print *, "starting"
@@ -1075,7 +1276,14 @@ PROGRAM ABL
          do n = 1, ngr
 
           ! Skip the land points
-          if ( mask(m,n) .ne. land_value ) then ! continue
+          if ( mask(m,n) .eq. land_value ) then ! reassert mask
+            do n_si=1,ncat
+              sic(m,n,n_si) = land_value ! sic(m,n,n_si)*mask(m,n)
+              sit(m,n,n_si) = land_value ! sit(m,n,n_si)*mask(m,n)
+              snt(m,n,n_si) = land_value ! snt(m,n,n_si)*mask(m,n) 
+              ice_snow_thick(m,n,n_si) = land_value !ice_snow_thick(m,n,n_si)*mask(m,n)
+            enddo
+          elseif ( mask(m,n) .ne. land_value ) then ! continue
             ! if ( mask(m,n) .eq. 0 ) continue
 
             ! Time integration
@@ -1213,6 +1421,11 @@ PROGRAM ABL
                 ! print *, "loaded nudging vars ",m,n
             endif
 
+            if (m.eq.1) then
+                    if (n.eq.4) then
+                            print *, "HCR tsoil b4",tsoil(m,n,:,1)
+                    endif
+            endif
             do n_si = 1, ncat
 
                 ! Update first q level with that from ERA5
@@ -1352,10 +1565,11 @@ PROGRAM ABL
         if (repeat_forcing.eq.-1) then
             loaded_already = 1
         endif
+        ! print *, "iteration done: merge_cnt is now ",merge_cnt
 !$OMP MASTER
         ! Outputing surface values
         ! surface variable every mnt_out _minutes_
-        mnt_out_ds = mnt_out*60./ds
+        mnt_out_ds = int(mnt_out*60./ds)
         IF(MOD(jm,mnt_out_ds).eq.0) then 
           ! mnt_out to number timesteps HCR
           call srfv_all%append_time(time)
@@ -1410,7 +1624,7 @@ PROGRAM ABL
           call Met_SI1%append_var("p", p_each_cat(:,:,:,1))
           call Met_SI1%append_var("q", q_each_cat(:,:,:,1))
           call Met_SI1%append_var("qi", qi_each_cat(:,:,:,1))
- 
+
           call ice_layers%append_time(time)
           call ice_layers%append_var("tsoil1",tsoil(:,:,:,1))
           call ice_layers%append_var("zsoil1",zsoil(:,:,:,1))

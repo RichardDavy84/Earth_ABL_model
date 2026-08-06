@@ -52,7 +52,7 @@ c ------------  find machine round-off limit
             if(rn.eq.one) then
               eps=10*eps
               goto 15
-	    endif
+            endif
  10     continue
       endif
  15   continue
@@ -75,11 +75,11 @@ c ............ find pivot index
               pmax=pvt
               pmin=pvt
             endif
-	do 40 i=jp1,n
+        do 40 i=jp1,n
           if(abs(a(i,j))/wa(i).gt.pvt) then
             pvt=abs(a(i,j))/wa(i)
             ipvt(j)=i
-	  endif
+          endif
  40     continue
           pmax=amax1(pmax,pvt)
           pmin=amin1(pmin,pvt)
@@ -87,9 +87,9 @@ c ............ singular matrix if pivot equals zero
           if(pvt.eq.zero) then
       WRITE(6,'(1x,"j,i,n,a(i,j):",3i2,6e14.6)') j,i,n,(a(i,i),i=1,6)
       stop
-	    info=-2
-	    goto 1000
-	  endif
+            info=-2
+            goto 1000
+          endif
 c ............ interchange rows if necessary
           l=ipvt(j)
           s=a(j,j)
@@ -99,7 +99,7 @@ c ............ interchange rows if necessary
           a(j,j)=t
           wa(l)=wa(j)
 c ............ compute multipliers
-	do 65 i=jp1,n
+        do 65 i=jp1,n
           a(i,j)=-a(i,j)/a(j,j)
  65     continue
 c ............ row elimination with column indexing
@@ -110,7 +110,7 @@ c ............ row elimination with column indexing
             l=ipvt(j)
             a(l,jj)=s
             a(j,jj)=t
-	  do 80 i=jp1,n
+          do 80 i=jp1,n
             a(i,jj)=a(i,jj)+t*a(i,j)
  80       continue
  95     continue
@@ -121,9 +121,9 @@ c 110  continue
 c ------------ check to make sure that matrix is not singular
         pvt=abs(a(n,n))
         if(pvt.eq.zero) then
-	  info=-3
-	  goto 1000
-	endif
+          info=-3
+          goto 1000
+        endif
 c        if(pmin/pmax.lt.(n*n)*eps) then
 c          info=-4
 c          goto 1000
@@ -134,7 +134,7 @@ c ============ ijob=0 or 2 solve a*x=b
 c ------------ first solve l*y=b
  500  continue
       do 600 nm=1,m
-	do 540 j=1,nm1
+        do 540 j=1,nm1
             jp1=j+1
             l=ipvt(j)
             t=b(l,nm)
@@ -142,20 +142,20 @@ c ------------ first solve l*y=b
             l=ipvt(j)
             b(l,nm)=s
             b(j,nm)=t
-	  do 530 i=jp1,n
+          do 530 i=jp1,n
             b(i,nm)=b(i,nm)+t*a(i,j)
  530      continue
  540    continue
 c ------------ now solve u*x=y
-	do 570 j=n,1,-1
+        do 570 j=n,1,-1
             b(j,nm)=b(j,nm)/a(j,j)
               t=-b(j,nm)
             jm1=j-1
           if(jm1.gt.0) then
-	    do 560 i=1,jm1
+            do 560 i=1,jm1
               b(i,nm)=b(i,nm)+t*a(i,j)
  560        continue
-	  endif
+          endif
  570    continue
  600  continue
       return
@@ -164,24 +164,24 @@ c ============ error condition encountered
       if(info.eq.-1) then
         write(*,'(/'' Error: Subroutine SOLVER''/
      &             '' n must be greater than one -- n='',i1)') n
-	stop
+        stop
       elseif(info.eq.-2)then
         write(*,'(/'' Error: Subroutine SOLVER''/
      &             '' zero pivot (40 loop) for i='',i3)') i
-	stop
+        stop
       elseif(info.eq.-3)then
         write(*,'(/'' Error: Subroutine SOLVER''/
      &             '' zero pivot (130 loop) for i='',i3)') i
-	stop
+        stop
       elseif(info.eq.-4)then
         write(*,'(/'' Error: Subroutine SOLVER''/
      &             '' excessive pivot ratio -- pmin/pmax ='',1pe12.2,
      &             '' for k='',i2)') pmin/pmax,1.
-	stop
+        stop
       else
         write(*,'(/'' Error: Subroutine SOLVER''/
      &             '' info='',i4)') info
-	stop
+        stop
       endif
       end
 c **********************************************************************

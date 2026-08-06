@@ -1,0 +1,78 @@
+FC = gfortran
+MODFLAG = -J
+
+tmp_dir=/cluster/home/hregan/ABL/Earth_ABL_model_gfortran #local_settings
+
+HDF_ROOT=/cluster/software/NRIS/zen4/software/HDF5/1.14.5-gompi-2024a
+INC_HDF = -I${HDF_ROOT}/include
+LIB_HDF = -L${HDF_ROOT}/lib -lhdf5 -L${HDF_ROOT}/lib -lhdf5_hl
+
+LIB_NC_CROOT=/cluster/software/zen5/software/netCDF/4.9.2--gompi-2024a
+LIB_NC_FROOT=/cluster/software/zen5/software/netCDF-Fortran/4.9.2--gompi-2024a
+LIB_NC = -L${LIB_NC_FROOT}/lib -lnetcdff -L${LIB_NC_CROOT}/lib64 -lnetcdf
+
+LIB_DT = -L${tmp_dir} -ldatetime -lncio
+
+FFLAGS = --fixed-form -g -fcheck=all -fbacktrace -Wall -I$(OBJ_DIR) # ${tmp_dir} # -real-size 64
+F90FLAGS = --free-form -g -fcheck=all -fbacktrace -Wall -I$(OBJ_DIR) # -g ${tmp_dir} # -real-size 64
+LDFLAGS = -L${tmp_dir} ${LIB_HDF} ${INC_HDF} ${LIB_NC} ${LIB_DT}
+
+F90FLAGS += -fcheck=bounds -fcheck=all -Wall
+FFLAGS += -fcheck=bounds -fcheck=all -Wall
+# F90FLAGS += -Wno-tabs -Wno-unused-variable -Wno-unused-dummy-argument -fcheck=bounds -fcheck=all -Wall
+# FFLAGS += -Wno-tabs -Wno-unused-variable -Wno-unused-dummy-argument -fcheck=bounds -fcheck=all -Wall
+
+# Executable names
+ABL = ABL.x
+IOTEST = iotest.x
+
+# Put objects and libraries in seperate directories
+OBJ_DIR = .obj
+$(shell mkdir -p .obj)
+# INCMOD = -I$(OBJ_DIR)
+CPPFLAGS = -I$(OBJ_DIR)
+
+OMPFLAG = -fopenmp
+
+# FFLAGS += -std=legacy 
+# LDFLAGS += -L${tmp_dir} -lnetcdff -lnetcdf # $(OBJ_DIR)
+# LDFLAGS += -L${tmp_dir} -lncio # $(OBJ_DIR)
+LDFLAGS += -L${tmp_dir} -lnetcdff -lnetcdf -lncio # $(OBJ_DIR)
+# LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -lhdf5 -lhdf5_hl -I $(OBJ_DIR)
+
+# The source files for modules
+SRC = mod_io.f90 physics_vars.f90 
+S77 = Initialization_module_NeXtSIM.for Command_module_for_NeXtSIM.for Physics.for Solver.for
+
+# Resulting object files
+OBJ = $(SRC:%.f90=$(OBJ_DIR)/%.o)
+O77 = $(S77:%.for=$(OBJ_DIR)/%.o)
+MAIN = $(OBJ_DIR)/ABL.o
+
+all: $(ABL)
+
+# Generic rules 
+$(OBJ_DIR)/%.o: %.f90 
+	# @mkdir -p $(OBJ_DIR) 
+	$(FC) $(F90FLAGS) $(OMPFLAG) $(MODFLAG)$(OBJ_DIR) -c $< -o $@ 
+	
+$(OBJ_DIR)/%.o: %.for 
+	# @mkdir -p $(OBJ_DIR) 
+	$(FC) $(FFLAGS) $(OMPFLAG) $(MODFLAG)$(OBJ_DIR) -c $< -o $@ 
+	
+# Extra module dependencies (because of USE statements) 
+$(OBJ_DIR)/Initialization_module_NeXtSIM.o: Initialization_module_NeXtSIM.for 
+$(OBJ_DIR)/physics_vars.o $(OBJ_DIR)/Physics.o: Physics.for $(OBJ_DIR)/physics_vars.o 
+$(OBJ_DIR)/Command_module_for_NeXtSIM.o: Command_module_for_NeXtSIM.for $(OBJ_DIR)/physics_vars.o 
+	$(FC) $(FFLAGS) $(OMPFLAG) $(MODFLAG)$(OBJ_DIR) -c $< -o $@	
+
+# Main program 
+$(OBJ_DIR)/ABL.o: ABL.f90 $(OBJ_DIR)/mod_io.o $(OBJ_DIR)/physics_vars.o
+	$(FC) $(F90FLAGS) $(OMPFLAG) $(MODFLAG)$(OBJ_DIR) -c $< -o $@
+	
+# Link 
+$(ABL): $(MAIN) $(OBJ) $(O77) 
+	$(FC) $(OMPFLAG) -o $@ $^ $(LDFLAGS)
+
+clean:
+	rm -rf $(OBJ_DIR) $(ABL) $(IOTEST)

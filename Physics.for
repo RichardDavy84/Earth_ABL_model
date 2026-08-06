@@ -46,7 +46,8 @@ c      PARAMETER (ni=11)
       INTEGER dt
 c---------Internal variables
       REAL a(ni),b(ni),c(ni),r(ni)
-      REAL dzeta2,rdif,rhoc,rlam,n,nv,rhoc2,rlam2
+c      REAL dzeta2,rdif,rhoc,rlam,n,nv,rhoc2,rlam2
+      REAL dzeta2,rdif,rhoc,rlam,rhoc2,rlam2,sw_fp,fw_fp
 
 c          open (UNIT=55,FILE='q.DAT')
 c          read (55,*) n
@@ -59,12 +60,22 @@ c      rhoc=1470000*(1-0.395)+nv*4186000
       DATA rhoc,rlam/910000,1.3/  !Ice   .404,.38  !800000.,.153125        ! .120125/,.18/      !1849600,1.05  1186600,.63
 c              2.96,2.2     2.268,1.9 garrat       2640000,2.7   !!2700000,2.025!!     2100000,1.68
       DATA rhoc2,rlam2/150000,0.3/ ! Snow
+      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
         dzeta2=dzeta*dzeta
-	rdif=.75         !.75 => implicit scheme, 0 => explicit scheme  Pielke 1984 MMM p290
+        rdif=.75         !.75 => implicit scheme, 0 => explicit scheme  Pielke 1984 MMM p290
 ccccccccccc
 cccccccccc
+c---------Before we do anything, make sure tsoil cannot exceed 273.15K here.
+c---------TO DO store any excess heat as equivalent ice melt
+      tsoil(1) = MIN(tsoil(1),fw_fp)        
+      if (zsoil(ni).eq.0) then
+        if (zsoil(ni).eq.0) then
+          ! it is open water or an unused column
+          tsoil(1) = 273.15 + 2.
+        endif
+      endif
 c---------Calculating coefficient of triangle matrix
-c.........First grid point
+c.........First grid point        
         i=1
       a(i)=0.
       b(i)=1.
@@ -103,26 +114,15 @@ c     1                                     -(tsoil(i)-tsoil(i-1))*zzm)
        endif
  100  continue
 c.........Last grid point
-	i=ni
+       i=ni
       a(i)=0.
       b(i)=1.
       c(i)=0.
       r(i)=tsoil(ni) ! This should be -2 C as bottom of sea ice
-c      print *, "IN SOILTDM, TSOIL(ni) ",tsoil(ni)
 c---------Solving matrix for the solution
-c      print *, "INPUTS "
-c      print *, "a ",a
-c      print *, "b ",b
-c      print *, "c ",c
-c      print *, "r ",r
-c      print *, "tsoil ",tsoil
-c      print *, "ni ",ni
-c       print *, "IN SOILTDM, TSOIL B4",tsoil
-	call strid(a,b,c,r,tsoil,ni)
-c       print *, "IN SOILTDM, TSOIL AF",tsoil
-       tsoil(1) = MIN(tsoil(1),-0.055*5. + 273.15) ! limit to freezing temp of SW (formula in nextsim)
-c      print *, "IN SOILTDM, TSOIL AF",tsoil
-c       print *, "dt in soiltdm has been ",dt
+       call strid(a,b,c,r,tsoil,ni)
+c       now done in strid
+c       tsoil(1) = MIN(tsoil(1),fw_fp) ! limit to freezing temp of SW (formula in nextsim)
 c
       return
       END
@@ -136,24 +136,27 @@ c=======================================================================
       REAL a(n),b(n),c(n),r(n),u(n)
       PARAMETER (NMAX=50)
       INTEGER j
-      REAL bet,gam(NMAX)
+      REAL bet,gam(NMAX),sw_fp,fw_fp
+
+      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
 c
       if(b(1).eq.0.) stop 'tridag: rewrite equations'
         bet=b(1)
         u(1)=r(1)/bet
-c      print *, "STRID 1 ",u(1),bet,r(1)
       do 10 j=2,n
         gam(j)=c(j-1)/bet
         bet=b(j)-a(j)*gam(j)
           if(bet.eq.0.) stop 'tridag failed'
         u(j)=(r(j)-a(j)*u(j-1))/bet
-c        print *, "STRID j ",j,u(j),gam(j)
  10   continue
       do 20 j=n-1,1,-1
         u(j)=u(j)-gam(j+1)*u(j+1)
-c        print *, "STRID j2 ",j,u(j),gam(j)
  20   continue
-c
+      do 30 j=1,n-1 ! now cap to freezing point
+        u(j)=MIN(u(j),fw_fp)
+ 30   continue
+      u(n)=MIN(u(n),sw_fp)
+
       return
       END
 c-----------------------------------------------------------------------
@@ -179,13 +182,15 @@ C     Last change:  WS   13 Dec 2005    1:36 am
 c======================================================================*
 c       Subroutine SUBGRID  --- calculating grid mesh zm and zt        *
 c======================================================================*
-      SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
+c      SUBROUTINE subgrid(dedzm,dedzt,zm,zt,zm0,nj,nw)
+      SUBROUTINE subgrid(dedzm,dedzt,zm,zt,nj)
 
       USE physics_vars, only: ct_atmos, deta, rlb, eta
 
       IMPLICIT none
-      INTEGER nj,nw,j,jm
-      REAL dedzm(nj),dedzt(nj),zm(nj),zt(nj),zm0
+c      INTEGER nj,nw,j,jm
+      INTEGER nj,j,jm
+      REAL dedzm(nj),dedzt(nj),zm(nj),zt(nj) !,zm0
       REAL x1,x2,eps,rtsafe
       EXTERNAL rtsafe,fgrid
       DATA eps/5.e-6/
@@ -195,14 +200,14 @@ c
       x1=zm(j)
       x2=1.
         eta=deta*.5
-	zt(j)=rtsafe(fgrid,x1,x2,eps)
+        zt(j)=rtsafe(fgrid,x1,x2,eps)
       do 10 j=2,nj
-	  x1=zt(j-1)
-	  x2=zt(j-1)*5.+.2
+          x1=zt(j-1)
+          x2=zt(j-1)*5.+.2
         eta=deta*(j-1.)
         zm(j)=rtsafe(fgrid,x1,x2,eps)
-	  x1=zm(j)
-	  x2=zm(j)*5.+.2
+          x1=zm(j)
+          x2=zm(j)*5.+.2
         eta=deta*(j-.5)
         zt(j)=rtsafe(fgrid,x1,x2,eps)
  10   continue
@@ -219,8 +224,8 @@ C        WRITE(6,*) jm+1,zm(jm+1),zt(jm+1),zm(jm+2),zt(jm+2)
 C      ENDIF
 c        PAUSE
       DO 30 j=1,nj
-	dedzm(j)=1./(zm(j)+ct_atmos)+1./rlb
-	dedzt(j)=1./(zt(j)+ct_atmos)+1./rlb
+        dedzm(j)=1./(zm(j)+ct_atmos)+1./rlb
+        dedzt(j)=1./(zt(j)+ct_atmos)+1./rlb
  30   CONTINUE
 c
       RETURN
@@ -235,8 +240,8 @@ c======================================================================*
       IMPLICIT none
       REAL x,f,df
 c
-	f=alog(x/ct_atmos+1.)+x/rlb-eta
-	df=1./(x+ct_atmos)+1./rlb
+        f=alog(x/ct_atmos+1.)+x/rlb-eta
+        df=1./(x+ct_atmos)+1./rlb
 c	f=alog(x/ct_atmos)+x/rlb-eta
 c	df=1./x+1./rlb
 c
@@ -256,7 +261,7 @@ c======================================================================*
 c
         a=2.
         b=4.5
-	edif=.5     ! 12.5, 0.5             ! eddy viscosity Km=12.5 m^2/s
+        edif=.5     ! 12.5, 0.5             ! eddy viscosity Km=12.5 m^2/s
       ustar=rtsafe(fdlaw,.01,3.5,1.e-8)
       angle=atan(b/(alog(ustar/(fc*z0))-a))
       aconst=sqrt(fc/(2.*edif))
@@ -297,29 +302,33 @@ c======================================================================*
 
       INTEGER ni,i
       REAL dedzs(ni),tsoil(ni),zsoil(ni)
-      REAL dzeta,t0,ct_ice
+      REAL dzeta,t0,t0cap,ct_ice,sw_fp,fw_fp
       REAL depth
+
+      !sw_fp from nextsim,-0.055*5 deg C
+      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
 c
+      t0cap=MIN(t0,fw_fp)
         zsoil(1)=0.
-        dedzs(1)=1./ct_ice
-        tsoil(1)=t0
-c      print *, "HCR zsoil inputs ",z0,dzeta
+        ! dedzs(1)=1./ct_ice
+        dedzs(1)=-1./ct_ice
+        tsoil(1)=t0cap ! CAP AT MELTING POINT
       DO i=2,ni
         if (dzeta.eq.0.) then
             zsoil(i) = 0.
-            tsoil(i) = t0
+            tsoil(i) = t0cap 
         else
             depth=ct_ice*(EXP(dzeta*REAL(i-1.))-1.)
             zsoil(i)=-depth
             ! dedzs(i)=1./(depth+ct_ice)
             dedzs(i)=-1./(depth+ct_ice)
         endif
-c        print *, "HCR zsoil i",zsoil(i)
       ENDDO
       DO i=2,ni
         if (dzeta.ne.0.) then
-         tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
-c         print *, "HCR tsoil",i,zsoil(i),zsoil(ni),tsoil(i)
+         tsoil(i)=t0-(t0-sw_fp)*zsoil(i)/zsoil(ni)       
+c         tsoil(i)=t0cap-(t0cap-sw_fp)*zsoil(i)/zsoil(ni)        !298,223
+c        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
         endif
       ENDDO
 c
@@ -327,25 +336,32 @@ c
 c======================================================================*
 c    Subroutine SUBSOILT_dedzs --- calculating initial ice grid        *
 c======================================================================*
+c      SUBROUTINE subsoilt_dedzs(dedzs,zsoil,dzeta,ct_ice,thick,ztype,ni)
       SUBROUTINE subsoilt_dedzs(dedzs,zsoil,dzeta,ct_ice,ni)
 
       IMPLICIT none
 
-      INTEGER ni,i
-      REAL dedzs(ni),zsoil(ni),dzeta,ct_ice
+      INTEGER ni,i! ,ztype
+      REAL dedzs(ni),zsoil(ni),dzeta,ct_ice! ,thick
       REAL depth
 c
         zsoil(1)=0.
-        dedzs(1)=1./ct_ice
+        dedzs(1)=-1./ct_ice
+        ! dedzs(1)=1./ct_ice
       DO i=2,ni
         if (dzeta.eq.0.) then
             zsoil(i) = 0.
         else
-            ! zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.) ! HCR changed 20260603
-            depth=ct_ice*(EXP(dzeta*REAL(i-1))-1.) ! HCR 20260603
-            zsoil(i)=-depth
-            ! dedzs(i)=1./(depth+ct_ice)
-            dedzs(i)=-1./(depth+ct_ice)
+            ! if (ztype.eq.1) then !do log spacing
+                ! zsoil(i)=-z0*(EXP(dzeta*(i-1.))-1.) ! HCR changed 20260603
+                depth=ct_ice*(EXP(dzeta*REAL(i-1))-1.) ! HCR 20260603
+                zsoil(i)=-depth
+                ! dedzs(i)=1./(depth+ct_ice)
+                dedzs(i)=-1./(depth+ct_ice)
+            ! elseif (ztype.eq.2) then !do equal spacing
+            !     depth=-(REAL(i-1.)*(thick/(ni-1.)))    
+            ! elseif (ztype.eq.3) then !set minimum height
+            ! endif
         endif
       ENDDO
 c      DO i=2,ni
@@ -373,25 +389,28 @@ c======================================================================*
       else
           dzeta=alog(ice_snow_thickness/ct_ice+1.)/(ni-1.)
       endif
-c      print *, "HCR in dzeta thick",ice_snow_thickness
 
       end subroutine
 c======================================================================*
 c     Subroutine SUBPROF  --- calculating various initial profiles     *
 c======================================================================*
-      subroutine subprof(p,q,qi,tvis,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,
-     1  kh,km,tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,
-     2  nj)
+c      subroutine subprof(p,q,qi,tvis,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,
+c     1  kh,km,tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,rpi,tgamma,
+c     2  nj)
+      subroutine subprof(p,q,qi,t,theta,u,v,e,ep,uw,vw,wq,wqi,wt,
+     1  kh,km,tl,tld,rnet,dedzt,zm,zt,aconst,angle,cp,rgas,tgamma,nj)
 
       USE physics_vars, only: alpha, fc, grav, rl0, tg, ug, vg, vk, 
      1  deta, pr, z0, ustar, uw0, vw0, wq0, wqi0, wt0
 
       implicit none
       INTEGER nj,j
-      REAL p(nj),q(nj),qi(nj),tvis(nj),t(nj),theta(nj),u(nj),v(nj),
+c      REAL p(nj),q(nj),qi(nj),tvis(nj),t(nj),theta(nj),u(nj),v(nj),
+      REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),u(nj),v(nj),
      1     e(nj),ep(nj),uw(nj),vw(nj),wq(nj),wqi(nj),wt(nj),
      2     kh(nj),km(nj),tl(nj),tld(nj),rnet(nj),dedzt(nj),zm(nj),zt(nj)
-      REAL aconst,angle,cp,rgas,rpi,tgamma,fnqs,uin,vin
+c      REAL aconst,angle,cp,rgas,rpi,tgamma,fnqs,uin,vin
+      REAL aconst,angle,cp,rgas,tgamma,fnqs,uin,vin
       EXTERNAL fnqs
 c
         u (1)=0.
@@ -426,7 +445,7 @@ c     1            -exp(-tg)*cos(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi))
 c        v   (j)=ug*exp(-tg)*sin(tg-(20.-45.)*rpi)*SQRT(2.)*SIN(20.*rpi)
 cccc
         t   (j)=t(1)-tgamma*zm(j)
-	p   (j)=p(j-1)-p(j-1)/t(j-1)*grav/rgas*deta/dedzt(j-1)
+        p   (j)=p(j-1)-p(j-1)/t(j-1)*grav/rgas*deta/dedzt(j-1)
 c	p   (j)=p(j-1)-p(j-1)/t(j-1)*grav/rgas*(zm(j)-zm(j-1))
         q   (j)=0.167*fnqs(p(j),t(j))!.8*fnqs(p(j),t(j))
         qi  (j)=0.
@@ -442,11 +461,11 @@ c
         tld(j)=1./(1./(vk*(zt(j)+z0))+1./rl0)
 c        tl(j)= 1./(1./(vk*zt(j))+1./rl0)
 c        tld(j)=1./(1./(vk*zt(j))+1./rl0)
-	ep(j)=(alpha*e(j))**1.5/tl(j)
-	km(j)=tl(j)*sqrt(alpha*e(j))
-	kh(j)=tl(j)*sqrt(alpha*e(j))/pr
-	wq(j)=0.
-	wqi(j)=0.
+        ep(j)=(alpha*e(j))**1.5/tl(j)
+        km(j)=tl(j)*sqrt(alpha*e(j))
+        kh(j)=tl(j)*sqrt(alpha*e(j))/pr
+        wq(j)=0.
+        wqi(j)=0.
         rnet(j)=0.
  20   continue
 c---------Calculating potential temperature & fluxes after reading data
@@ -455,13 +474,13 @@ c---------Calculating potential temperature & fluxes after reading data
  30   continue
         tg=theta(nj)                   ! Used for Top Boundary Condition
       do 40 j=1,nj-1
-	wt(j)=-kh(j)*dedzt(j)*(theta(j+1)-theta(j))/deta
-	wq(j)=-kh(j)*dedzt(j)*(q(j+1)-q(j))/deta
-	wqi(j)=-kh(j)*dedzt(j)*(qi(j+1)-qi(j))/deta
+        wt(j)=-kh(j)*dedzt(j)*(theta(j+1)-theta(j))/deta
+        wq(j)=-kh(j)*dedzt(j)*(q(j+1)-q(j))/deta
+        wqi(j)=-kh(j)*dedzt(j)*(qi(j+1)-qi(j))/deta
  40   continue
-       	wt(nj)=wt(nj-1)
-	wq(nj)=wq(nj-1)
-	wqi(nj)=wqi(nj-1)
+        wt(nj)=wt(nj-1)
+        wq(nj)=wq(nj-1)
+        wqi(nj)=wqi(nj-1)
 c---------Surface turbulent fluxes
       uw0=uw(1)
       vw0=vw(1)
@@ -478,13 +497,13 @@ c======================================================================*
       INTEGER nj,j
       REAL e(nj),zm(nj),zt(nj),rl,esum,ezsum
 c
-	esum=0.
-	ezsum=0.
+        esum=0.
+        ezsum=0.
       do 50 j=1,nj-1
-	esum=esum+sqrt(e(j))*(zm(j+1)-zm(j))
-	ezsum=ezsum+sqrt(e(j))*(zm(j+1)-zm(j))*zt(j)
+        esum=esum+sqrt(e(j))*(zm(j+1)-zm(j))
+        ezsum=ezsum+sqrt(e(j))*(zm(j+1)-zm(j))*zt(j)
  50   continue
-	rl=.3*ezsum/esum
+        rl=.3*ezsum/esum
 c
       return
       END
@@ -495,8 +514,11 @@ c     In this subroutine, we calculating the following quatities:      +
 c          a) turbulent length scales, b) eddy diffusivity             +
 c        c) the dissipation of the TKE and d) turbulent fluxes         +
 c======================================================================*
-      subroutine sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
-     1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
+c      subroutine sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
+c     1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
+c     2                  nj,nw)
+      subroutine sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zt,e,ep,
+     1                  kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,
      2                  nj,nw)
 
       USE physics_vars, only: alpha, betag, rl0, vk, betam, pr, deta, z0
@@ -504,12 +526,14 @@ c======================================================================*
       IMPLICIT none
       INTEGER nj,nw,j
       REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dudz(nj),dvdz(nj),
-     1     dthdz(nj),dedzt(nj),zm(nj),zt(nj),e(nj),ep(nj),
+     1     dthdz(nj),dedzt(nj),zt(nj),e(nj),ep(nj),
      2     kh(nj),km(nj),rif(nj),rlmo(nj),tl(nj),tld(nj),
      3     uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj)
-      REAL rifc,wlo,rin,fphi_m,ustar
+c     1     dthdz(nj),dedzt(nj),zm(nj),zt(nj),e(nj),ep(nj),
+c      REAL rifc,wlo,rin,fphi_m,ustar
+      REAL rifc,rin,fphi_m,ustar
       EXTERNAL fphi_m
-      REAL shear,frim,frih
+c      REAL shear,frim,frih
 c
 c---------Calculating the derivative fields of mean quantities
       do 10 j=1,nj-1
@@ -536,11 +560,11 @@ c        rlmo(j)=-vk*grav/theta(j)*wt(j)/(ustar**3+1.e-9)
  30   continue
 c---------Calculating turbulent length scale
       do 40 j=nw+1,nj
- 	if(rlmo(j).le.0.) then                      ! dtdz=0 -> fphi_m=1
+         if(rlmo(j).le.0.) then                      ! dtdz=0 -> fphi_m=1
 c---------Neutral/unstable condition
- 	  tl(j)=1./(fphi_m((zt(j)+z0)*rlmo(j))/(vk*(zt(j)+z0))+1./rl0)
+          tl(j)=1./(fphi_m((zt(j)+z0)*rlmo(j))/(vk*(zt(j)+z0))+1./rl0)
 c 	  tl(j)=1./(fphi_m(zt(j)*rlmo(j))/(vk*zt(j))+1./rl0)
-	  tld(j)=tl(j)
+          tld(j)=tl(j)
         elseif(rlmo(j).gt.0.) then
 c---------Stable condition
 c.........Andre etal (1978)
@@ -554,7 +578,7 @@ c	      endif
 c	        tld(j)=tl(j)
 c.........Delage (1974)
           tl(j)=1./(1./(vk*(zt(j)+z0))+1./rl0+betam*rlmo(j)/vk)
-	  tld(j)=1./(1./(vk*(zt(j)+z0))+1./rl0+(betam-1.)*rlmo(j)/vk)
+          tld(j)=1./(1./(vk*(zt(j)+z0))+1./rl0+(betam-1.)*rlmo(j)/vk)
 c	  tl(j)=1./(1./(vk*zt(j))+1./rl0+betam*rlmo(j)/vk)
 c	  tld(j)=1./(1./(vk*zt(j))+1./rl0+(betam-1.)*rlmo(j)/vk)
 c            rin=MIN(0.3,vk*(zt(j)+z0))
@@ -570,16 +594,16 @@ c             tl(j)=MAX(tl(j),rin)
 c             tld(j)=MAX(tld(j),rin)
 c            PAUSE
           ENDIF
- 	endif
+         endif
  40   continue
 c---------Calculating the dispersion of TKE
       do 50 j=nw+1,nj
-	ep(j)=(alpha*e(j))**1.5/tld(j)
+        ep(j)=(alpha*e(j))**1.5/tld(j)
  50   continue
 c---------Calculating eddy diffusivities
       do 60 j=nw+1,nj
-	km(j)=tl(j)*sqrt(alpha*e(j))
-	kh(j)=tl(j)*sqrt(alpha*e(j))/pr
+        km(j)=tl(j)*sqrt(alpha*e(j))
+        kh(j)=tl(j)*sqrt(alpha*e(j))/pr
  60   continue
 c==============Savijarvi's Mixing-length Turbulence Closure
 c      do j=nw,nj
@@ -599,11 +623,11 @@ c          kh(j)=tl(j)*tl(j)*sqrt(shear)*frih
 c      end do
 c---------Calculating the turbulent fluxes
       do 200 j=nw+1,nj-1
-  	uw(j)=-km(j)*dudz(j)
-	vw(j)=-km(j)*dvdz(j)
-	wt(j)=-kh(j)*dthdz(j)
-  	wq(j)=-kh(j)*(q(j+1)-q(j))*dedzt(j)/deta
-	wqi(j)=-kh(j)*(qi(j+1)-qi(j))*dedzt(j)/deta
+        uw(j)=-km(j)*dudz(j)
+        vw(j)=-km(j)*dvdz(j)
+        wt(j)=-kh(j)*dthdz(j)
+        wq(j)=-kh(j)*(q(j+1)-q(j))*dedzt(j)/deta
+        wqi(j)=-kh(j)*(qi(j+1)-qi(j))*dedzt(j)/deta
  200  continue
         uw(nj)=uw(nj-1)
         vw(nj)=vw(nj-1)
@@ -618,20 +642,25 @@ c                       Subroutine SUBSRF                              *
 c     Calculating surface boundary conditions using Monin-Obukhov      *
 c similarity theory and the profile relations of Businger et al (1971) *
 c======================================================================*
-      subroutine subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,
-     1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
+c      subroutine subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,
+c     1                  tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
+      subroutine subsrf(u,v,theta,q,qi,dedzt,zm,e,ep,kh,km,rif,
+     1                  uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
 
       USE physics_vars, only: alpha, betag, vk, pr, deta, qistar, qstar,
      1  tstar, ustar, uw0, wq0, vw0, wqi0, wt0, z0
 
       IMPLICIT none
       INTEGER nn,nj,nw,j
-      REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dedzt(nj),zm(nj),zt(nj),
-     1     e(nj),ep(nj),kh(nj),km(nj),rif(nj),rlmo(nj),tl(nj),tld(nj),
+c      REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dedzt(nj),zm(nj),zt(nj),
+c     1     e(nj),ep(nj),kh(nj),km(nj),rif(nj),rlmo(nj),tl(nj),tld(nj),
+c     3     uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj)
+      REAL u(nj),v(nj),theta(nj),q(nj),qi(nj),dedzt(nj),zm(nj),
+     1     e(nj),ep(nj),kh(nj),km(nj),rif(nj),
      3     uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj)
       REAL fphi_m,fpsi_m,fpsi_h,rifc
       REAL eps,utmp,wind,tdif,wlo,tstar1,ustar1,wlo1,usdif
-      REAL shear,rin,frim,frih
+c      REAL shear,rin,frim,frih
       EXTERNAL fphi_m,fpsi_m,fpsi_h
       DATA nn,eps/50,1.e-6/
 c
@@ -686,7 +715,7 @@ c        e(j)=ustar**2/alpha
         e(j)=sqrt( (-uw(j)*(u(j+1)-u(j))/(zm(j+1)-zm(j))
      1              -vw(j)*(v(j+1)-v(j))/(zm(j+1)-zm(j))
      1            -betag*tstar*ustar)*km(j) )/alpha
-	ep(j)=(alpha*e(j))**2/km(j)
+        ep(j)=(alpha*e(j))**2/km(j)
 c
         rif(j)=betag*(theta(j+1)-theta(j))/(zm(j+1)-zm(j))/pr/
      1               ( ((u(j+1)-u(j))/(zm(j+1)-zm(j)))**2
@@ -710,7 +739,7 @@ c        e(j)=ustar**2/alpha
         e(j)=sqrt( (-uw(j)*dedzt(j)*(u(j+1)-u(j))/deta
      1              -vw(j)*dedzt(j)*(v(j+1)-v(j))/deta
      1            +betag*wt(j))*km(j) )/alpha
-	ep(j)=(alpha*e(j))**2/km(j)
+        ep(j)=(alpha*e(j))**2/km(j)
       end do
 c--------------Surface quantities
           qstar=-wq(1)/ustar
@@ -861,7 +890,7 @@ c
       if((fl.gt.0..and.fh.gt.0.).or.(fl.lt.0..and.fh.lt.0.)) then
         write(6,*) '             root must be bracketed in rtsafe ... '
         write(6,*) ' x1,x2,fl,fh = ',x1,x2,fl,fh
-	stop
+        stop
       endif
       if(fl.eq.0.)then
         rtsafe=x1
@@ -895,11 +924,11 @@ c
           if(temp.eq.rtsafe) return
         endif
 c
-	if(rtsafe.gt.100) then
-	  eps=abs(dx/rtsafe)
-	else
-	  eps=abs(dx)
-	endif
+        if(rtsafe.gt.100) then
+          eps=abs(dx/rtsafe)
+        else
+          eps=abs(dx)
+        endif
           if(eps.lt.xacc) return
 c
           call funcd(rtsafe,f,df)
@@ -910,8 +939,8 @@ c
         endif
  100  continue
         write(6,*) 'rtsafe exceeding maximum iterations =',maxit
-	write(6,*)
-	write(6,'(5x,'' x1,x2     ='',3e16.8)') x1,x2
+        write(6,*)
+        write(6,'(5x,'' x1,x2     ='',3e16.8)') x1,x2
         write(6,'(5x,'' f,df      ='',2e16.8)') f,df
         write(6,'(5x,'' xl,xh,err ='',3e16.8)') xl,xh,dx
 c
@@ -920,12 +949,14 @@ c
 c======================================================================*
 c        Subroutine MEANOUT  --- outputing data for mean variables     *
 c======================================================================*
-      SUBROUTINE meanout(zm,zt,u,v,t,th,p,q,qi,z0,nj,iout)
+c      SUBROUTINE meanout(zm,zt,u,v,t,th,p,q,qi,z0,nj,iout)
+      SUBROUTINE meanout(zm,u,v,t,th,p,q,qi,z0,nj,iout)
       IMPLICIT none
       INTEGER nj,j,iout
-      REAL zm(nj),zt(nj),u(nj),v(nj),t(nj),th(nj),p(nj),q(nj),qi(nj),z0
+c      REAL zm(nj),zt(nj),u(nj),v(nj),t(nj),th(nj),p(nj),q(nj),qi(nj),z0
+      REAL zm(nj),u(nj),v(nj),t(nj),th(nj),p(nj),q(nj),qi(nj),z0
 c
-	write(iout,'(""" z, U, V, T, Theta, P, Q, QI, z+z0""")')
+        write(iout,'(""" z, U, V, T, Theta, P, Q, QI, z+z0""")')
       do j=1,nj
         write(iout,'(10e14.6)') zm(j),u(j),v(j),t(j),th(j),p(j),
      1    q(j)*1.e3,qi(j)*1.e6,zm(j)+z0                 !q in g/kg
@@ -936,11 +967,14 @@ c
 c======================================================================*
 c    Subroutine TURBOUT  --- outputing data for turbulent variables    *
 c======================================================================*
-      SUBROUTINE turbout(zm,zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,
+c      SUBROUTINE turbout(zm,zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,
+c     1                   nj,iout)
+      SUBROUTINE turbout(zt,e,uw,vw,wt,wq,wqi,ep,km,kh,tld,z0,
      1                   nj,iout)
       IMPLICIT none
       INTEGER nj,j,iout
-      REAL zm(nj),zt(nj),e(nj),uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj),
+c      REAL zm(nj),zt(nj),e(nj),uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj),
+      REAL zt(nj),e(nj),uw(nj),vw(nj),wt(nj),wq(nj),wqi(nj),
      1     ep(nj),km(nj),kh(nj),tld(nj),z0
 c
       write(iout,'(""" z, E, <uw>, <vw>, ep, <wt>, <wq>, <wqi>, km, kh,
@@ -979,21 +1013,25 @@ c                 c -- upper block diagonal of difference matrix       *
 c                 d -- right hand side of difference matrix            *
 c***********************************************************************
       SUBROUTINE coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,t,u,v,uw,vw,dedzm,
-     1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
+     1           dedzt,kh,km,tld,wa,ipvt,nj,nv)
+c     1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
 
       USE physics_vars, only: alpha, betag, deta, ds, fc, ug, vg, zero
 
       IMPLICIT none
-      INTEGER nj,nv,nw,ipvt(nv)
+c      INTEGER nj,nv,nw,ipvt(nv)
+      INTEGER nj,nv,ipvt(nv)
 c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv)
       REAL dedzm(nj),p(nj),q(nj),qi(nj),t(nj),u(nj),v(nj)
       REAL dedzt(nj),e(nj),ep(nj),kh(nj),km(nj),tld(nj),uw(nj),vw(nj),
-     1     rnet(nj),zm(nj),wa(nv),wlo
+     1     wa(nv)
+c     1     rnet(nj),zm(nj),wa(nv),wlo
       INTEGER j,jp,jm
       REAL fnqs,deta2,rdif,rdis
-      REAL fpsi_m,fpsi_h,rw1,rt1,rw2,rt2
+c      REAL fpsi_m,fpsi_h,rw1,rt1,rw2,rt2
+      REAL fpsi_m,fpsi_h
       EXTERNAL fpsi_m,fpsi_h
 c
 c---------Set degree of implicitness for diffusion terms
@@ -1260,7 +1298,7 @@ c---------Source terms
       d(5)=qi(j)/ds
       d(6)=e(j)/ds-(1.-rdis)*ep(j)+(1.-rdif)*dedzt(j)
      1               *.5*( (km(jp)+km(j))*dedzm(jp)*(e(jp)-e(j))
-     2	                  -(km(j)+km(jm))*dedzm(j)* (e(j)-e(jm)) )/deta2
+     2                   -(km(j)+km(jm))*dedzm(j)* (e(j)-e(jm)) )/deta2
 c
         call factor(alfa,beta,wa,ipvt,j,nj,a,b,c,d,nv)
  500  continue
@@ -1467,7 +1505,8 @@ c                          Subroutine thermoIce0                       *
 c     description: Calculates surface temperature and fluxes based on  *
 c           ice thickness and snow thickness model inputs              *
 c **********************************************************************
-      SUBROUTINE thermoIce0(dt,Qia,dQiadT,sic,sit,snt,Tsurf)
+c      SUBROUTINE thermoIce0(dt,Qia,dQiadT,sic,sit,snt,Tsurf)
+      SUBROUTINE thermoIce0(Qia,dQiadT,sit,snt,Tsurf)
 c     BELOW: full call required for melt and growth code too
 c      SUBROUTINE thermoIce0(ds,sic,sit,snt,snwfall,Qia,dQiadT,subl,
 c      1  Tbot,Qi,hi,hs,hi_old,del_hi,del_hs_mlt,mlt_hi_top,mlt_hi_bot,
@@ -1483,25 +1522,30 @@ c     INPUTS
 ccc      REAL sic, sit, snt, snwfall, Qia, dQiadT, subl, Tbot
 c      REAL sic, sit, snt, Qia, dQiadT, Tsurf
       REAL Qia, dQiadT
-      INTEGER dt
+c      INTEGER dt
 c      REAL dt
 
 c     INPUT/OUTPUT  
-      REAL sic, sit, snt, Tsurf
+c      REAL sic, sit, snt, Tsurf
+      REAL sit, snt, Tsurf
 
 c     FOR CONSTANTS/LOCAL
-      REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
-      REAL qi, qs, Tfr_ice, Tbot, tempCtoK
-      REAL Qic, Qio, del_hb, del_ht, draft,Qia_uw  
-      INTEGER flooding, freezingp ! an option in nextsim, default true...
-      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
-      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+c      REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
+      REAL mu, si, ki, ks !ccchmin ! put these in a common block??
+c      REAL qi, qs, Tfr_ice, Tbot, tempCtoK
+      REAL Tfr_ice, Tbot, tempCtoK
+c      REAL Qic, Qio, del_hb, del_ht, draft,Qia_uw  
+      REAL Qic, Qia_uw  
+c      INTEGER flooding, freezingp ! an option in nextsim, default true...
+      INTEGER freezingp ! an option in nextsim, default true...
+c      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL hi, hs 
+c      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
 
-      REAL sst, mld
+c      REAL sst, mld
 
 c     CHECK THE SIGNS OF Q!!!!!!
 
-c      print *, "dt in thermoice0", dt
 
 c --- set constants (these should use constants from header files)
 c     !!! NEEDS TO BE SAME AS NEXTSIM NAMELIST (particularly ks which
@@ -1537,22 +1581,15 @@ c ------- 1) calculate slab thickness
           hi = sit!/sic JUST USE INPUT FOR NOW
 ccc          hi_old = hi
           hs = snt!/sic JUST USE INPUT FOR NOW
-c          print *, "hi, hs 1",hi,hs
 
           Qia_uw = -Qia
 
 c         Equilibrium met if Tbot = QA/Kstuff + Tsurf
-c          print *,"Equib?",Tbot,Qia_uw/(ks/(hs+ks*hi/ki)) + Tsurf
 
 c ------- 2) calculate Tsurf and conductive flux through ice
           Qic = ks*(Tbot - Tsurf)/(hs + ks*hi/ki)
 c          Tsurf = Tsurf + 0.001
-c          print *, "HH1",Tbot, Tsurf, hs+hs*hi/ki
-c          print *, "HH2",Qic, Qia, dQiadT
-c          print *, "b4 T,flux",Tsurf,(Qic-Qia)/(ks/(hs+ks*hi/ki)+dQiadT)
           Tsurf = Tsurf + (Qic - Qia_uw)/(ks/(hs+ks*hi/ki) + dQiadT)
-c          print *, "Tsurf components ",Qic, Qia,ks/(hs+ks*hi/ki)+dQiadT
-c          print *, "Tsurf wants to be ",Tsurf,hs
 c         Limit Tsurf to the freezing point of snow or ice
           Tsurf = Tsurf + tempCtoK
           if ( hs + hi > 0. ) then
@@ -1573,7 +1610,8 @@ c                          Subroutine thermoIce0                       *
 c     description: Calculates surface temperature and fluxes based on  *
 c           ice thickness and snow thickness model inputs              *
 c **********************************************************************
-      SUBROUTINE meltgrowth(dt,Qia,dQiadT,e0,sic,sit,snt,Tsurf)
+c      SUBROUTINE meltgrowth(dt,Qia,dQiadT,e0,sic,sit,snt,Tsurf)
+      SUBROUTINE meltgrowth(dt,Qia,e0,sic,sit,snt,Tsurf)
 c     BELOW: full call required for melt and growth code too
 c      SUBROUTINE thermoIce0(ds,sic,sit,snt,snwfall,Qia,dQiadT,subl,
 c      1  Tbot,Qi,hi,hs,hi_old,del_hi,del_hs_mlt,mlt_hi_top,mlt_hi_bot,
@@ -1588,7 +1626,8 @@ c     del_hs_mlt, mlt_hi_top, mlt_hi_bot, del_hi_s2i, M_tice
 c     INPUTS
 ccc      REAL sic, sit, snt, snwfall, Qia, dQiadT, subl, Tbot
 c      REAL sic, sit, snt, Qia, dQiadT, Tsurf
-      REAL Qia, dQiadT, e0, Qia_uw
+c      REAL Qia, dQiadT, e0, Qia_uw
+      REAL Qia, e0, Qia_uw
       INTEGER dt
 c      REAL dt
 
@@ -1600,12 +1639,11 @@ c     FOR CONSTANTS/LOCAL
       REAL qi, qs, Tfr_ice, Tbot, tempCtoK
       REAL Qic, Qio, del_hb, del_ht, draft  
       INTEGER flooding, freezingp ! an option in nextsim, default true...
-      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+c      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL hi, hs, hi_old, del_hi, mlt_hi_top, mlt_hi_bot
       REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
 
       REAL sst, mld
-
-c      print *, "dt in thermoice0", dt
 
 c --- set constants (these should use constants from header files)
 c     !!! NEEDS TO BE SAME AS NEXTSIM NAMELIST (particularly ks which
@@ -1651,7 +1689,6 @@ ccc          hi_old = 0.
 ccc          del_hi = 0.
       else
 c ------- 1) calculate slab thickness
-c          print *, "si inputs",sit,sic,snt
           hi = sit/sic
           hi_old = hi
           hs = snt/sic
@@ -1669,7 +1706,6 @@ c         snow and sublimation
           Lsub = Lf + Lv0 - 240. - 290.*Tsurf - 4*Tsurf*Tsurf ! Latent heat of sublimation
           subl = MAX(0., e0/Lsub) ! Check that this is the correct latent heat flux!
           del_hs_mlt = MIN(Qia_uw-Qic,0.)*dt/qs
-c          print *, "change hs ",hs," is ",del_hi_mlt," - ",subl*dt/rhos
           hs = hs + del_hs_mlt - subl*dt/rhos
 c         use energy left over after snow melts to melt the ice
           del_ht = MIN(hs, 0.)*qs/qi
@@ -1681,21 +1717,15 @@ cccc      !!! IMPORTANT: how do we include snowfall???  HCR
 c         Bottom melt/growth
           Qio = 2. ! Einar Olason, personal comms, 27-02-2024 (sst-Tbot)*rhow*cpw*mld/dt ! Ice-ocean heat flux
           del_hb = (Qic - Qio)*dt/qi
-c          print *, "del_hb = (",Qic," - ",Qio,")*",dt,"/",qi 
 
 c         Combine top and bottom
           del_hi = del_ht + del_hb
-c          print *, "TESThia",hi,del_ht,del_hb,del_hi
           hi = (1000.*hi + 1000.*del_hi)/1000.
-c          print *, "TESThib",hi,del_ht,del_hb,del_hi
-c          print *, "TESThic",hi*1000. - 2000.
           mlt_hi_top = MIN(del_ht,0.)
           mlt_hi_bot = MIN(del_hb,0.)
 
-c          print *, "hi here is ",hi,del_hi
 c         Snow to ice conversion
           draft = (hi*rhoi + hs*rhos)/rhow
-c          print *, "draft is",draft,hi*rhoi,hs*rhos,rhow
 c         In nextsim, there is an option for snow flooding. Need to if still an option here!          
           if ( flooding == 1) then ! default flooding is true
               if (draft > hi) then
@@ -1706,7 +1736,6 @@ c                 Subtract the mass of snow converted to ice from hs_new
                   hi = draft
               endif
           endif
-c          print *, "hi, hs 4",hi,hs,del_hb,draft
 
 c         Make sure hi_new is not too small
           if ( hi < hmin ) then
@@ -1723,16 +1752,9 @@ c         Make sure hi_new is not too small
               hs = 0.
               Tsurf = Tfr_ice
           endif
-c          print *, "old sit and snt: ",sit,snt,del_hi
-c          print *, "old new diff ", sit - hi*sic 
-c          print *, "sit old + flux ", sit + del_hi*sic
-c          print *, "PHYS new sit and snt old: ",sit,snt,del_hi
-c          print *, "TESTa",sit,hi,sic
           sit = hi*sic 
-c          print *, "TESTb",sit,hi,sic
 c          sic: NOT MODIFIED HERE - for now, we ignore lateral growth
           snt = hs*sic
-c          print *, "PHYS new sit and snt: ",sit,snt
       endif
 
       return
@@ -1805,7 +1827,6 @@ c     Outputs: specific humidity (q2m) for use in ABL
            sn_thicks(1) = 0.
          endif      
       endif
-      print *, "si tots 1a, ",si_concs(1),si_thicks(1) 
 
       if (ncats.gt.1) then
          do ncnt=2,ncats-1
@@ -1818,7 +1839,6 @@ c     Outputs: specific humidity (q2m) for use in ABL
              si_thicks(ncnt) = 0.
              sn_thicks(ncnt) = 0.
            endif      
-           print *, "tots 1b",si_concs(ncnt),si_thicks(ncnt)
          enddo
       endif
 
@@ -1835,7 +1855,6 @@ c     Outputs: specific humidity (q2m) for use in ABL
       if (ncats.gt.1) then
          do ncnt=2,ncats
            ! Check 2: do any need to be rounded?
-           print *, "si tots 2b4, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
            si_concs(ncnt) = MIN(MAX(si_concs(ncnt),0.),1.)
            if (si_concs(ncnt).lt.min_val_c) then
                ! add this into the category before and set this to zero
@@ -1844,33 +1863,27 @@ c     Outputs: specific humidity (q2m) for use in ABL
                si_thicks(ncnt) = 0.
                sn_thicks(ncnt) = 0.
            endif
-           print *, "si tots 2af, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
          enddo
       endif
 
       if (ncats.gt.1) then
          ! Check 3: do they sum to greater than 1?
          do ncnt=2,ncats
-           print *, "si tots 3b4, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
            si_concs(ncnt) = MIN(MAX(si_concs(ncnt),0.),1.)
            if (sea_ice_sum + si_concs(ncnt).gt.1.) then
-             print *, "tots gt 1"
              si_concs(ncnt) = 1. - sea_ice_sum
              if (si_concs(ncnt).lt.min_val_c) then
                  si_concs(ncnt-1) = si_concs(ncnt-1) + si_concs(ncnt)
                  si_concs(ncnt) = 0.
              endif
            elseif (sea_ice_sum + si_concs(ncnt).lt.0.) then
-             print *, "tots lt 0"
              si_concs(ncnt) = 0.
            endif
            if (si_concs(ncnt).eq.0.) then
-              print *, "tots eq 0"
               si_thicks(ncnt) = 0.
               sn_thicks(ncnt) = 0.
            endif
            sea_ice_sum = sea_ice_sum + si_concs(ncnt)
-           print *, "si tots 3af, ",ncnt,si_concs(ncnt),si_thicks(ncnt) 
          enddo
       endif 
          
@@ -1883,7 +1896,8 @@ c                          Subroutine Winton2000                       *
 c     description: Calculates surface temperature and fluxes based on  *
 c           ice thickness and snow thickness model inputs              *
 c **********************************************************************
-      SUBROUTINE Winton(dt,Qia,dQiadT,Qsw,sic,sit,snt,Tsurf,T1,T2)
+c      SUBROUTINE Winton(dt,Qia,dQiadT,Qsw,sic,sit,snt,Tsurf,T1,T2)
+      SUBROUTINE Winton(dt,Qia,dQiadT,Qsw,sit,snt,Tsurf,T1,T2)
      
       IMPLICIT none
 
@@ -1891,17 +1905,21 @@ c **********************************************************************
       INTEGER dt
 
 c     INPUT/OUTPUT  
-      REAL sic, sit, snt, Tsurf,T1,T2
+c      REAL sic, sit, snt, Tsurf,T1,T2
+      REAL sit, snt, Tsurf,T1,T2
 
 c     FOR CONSTANTS/LOCAL
       REAL Lf, Lv0, rhoi, rhos, rhow, mu, si, ki, ks, cpw !ccchmin ! put these in a common block??
       REAL qi, qs, Tfr_ice_C, Tbot, tempCtoK, I_0, C, Tfr_surf, Crho
-      REAL Qic, Qio, del_hb, del_ht, draft 
+c      REAL Qic, Qio, del_hb, del_ht, draft 
       INTEGER flooding, freezingp ! an option in nextsim, default true...
-      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
-      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+c      REAL hi, hs, hi_old, del_hi, del_hi_mlt, mlt_hi_top, mlt_hi_bot
+      REAL hi, hs 
+c      REAL del_hi_s2i, hmin, del_hs_mlt, subl, Lsub
+      REAL hmin
 
-      REAL sst, mld, Msurf
+c      REAL sst, mld, Msurf
+      REAL Msurf
 
       REAL K12_wn,A_wn,B_wn,K32_wn,A1_wn,B1_wn,C1_wn
 
@@ -1931,15 +1949,11 @@ c     is a namelist option, not just in constants.hpp
 
       !!! DO EVERYTHING IN CELCIUS, AS PER NEXTSIM (still confused about
       !dQiadT...)
-      print *, "Tvals, K, in",Tsurf,T1,T2
       Tsurf = Tsurf - tempCtoK
       T1 = T1 - tempCtoK
       T2 = T2 - tempCtoK
-      print *, "Tvals, C, in",Tsurf,T1,T2
 
       Tfr_ice_C = -mu*si ! freezing temp of ice, in CELCIUS
-
-      print *, "invals",Qia,Qsw,dQiadT,Tsurf,T1,T2
 
       if ( freezingp == 0 ) then
           Tbot = Tfr_ice_C
@@ -1962,7 +1976,6 @@ c ------- 1) calculate slab thickness
           hi = sit!/sic ! FOR NOW; JUST USE STRAIGHT INPUT
 ccc          hi_old = hi
           hs = snt! /sic ! FOR NOW: JUST USE STRAIGHT INPUT
-          print *, "hi, hs 1",hi,hs
 
           Qia_uw = -Qia
           Qsw_uw = -Qsw
@@ -1973,8 +1986,6 @@ c ------- 2) calculate coefficients
           B_wn = dQiadT
           K32_wn = 2*ki/hi
 
-          print *, "coef",K12_wn,A_wn,B_wn,K32_wn
-
           A1_wn= hi*Crho/(2*dt)  
      1       + K32_wn*(4*dt*K32_wn + hi*Crho)/(6*dt*K32_wn+hi*Crho)
      2       + K12_wn*B_wn/(K12_wn+B_wn)
@@ -1984,10 +1995,6 @@ c         Remember that Tfr_ice = -mu*si!
      2       -K32_wn*(4*dt*K32_wn*Tbot+hi*Crho*T2)/(6*dt*K32_wn+hi*Crho)
      3       + A_wn*K12_wn/(K12_wn + B_wn)
           C1_wn = hi*qi*Tfr_ice_C/(2*dt)
-
-          print *, "coefA",A1_wn,hi,B_wn,K12_wn,K32_wn
-          print *,"coefB",B1_wn,hi,T1,Qsw,K32_wn,K12_wn,A_wn,B_wn,Tbot
-          print *, "coefC",C1_wn,hi,qi,Tfr_ice_C,dt
 
           if (hs .gt. 0.) then
             Tfr_surf = 0.  !+ tempCtoK
@@ -2004,7 +2011,6 @@ c ------- 4) recalculate if we're melting
             A1_wn = A1_wn+K12_wn - K12_wn*B_wn/(K12_wn + B_wn)
             B1_wn = B1_wn-K12_wn*Tsurf+A_wn*K12_wn/(K12_wn+B_wn)
             T1=-(B1_wn+sqrt(B1_wn*B1_wn-4*A1_wn*C1_wn))/(2*A1_wn)
-            print *, "Tvals melting",T1
 
             Msurf = K12_wn*(T1 - Tsurf) - (A_wn+B_wn*Tsurf)
           else
@@ -2017,12 +2023,10 @@ c ------- 4) recalculate if we're melting
 
       endif
 
-      print *, "Tvals, C, out",Tsurf,T1,T2
       ! Now turn back to Kelvin
       Tsurf = Tsurf + tempCtoK
       T1 = T1 + tempCtoK
       T2 = T2 + tempCtoK
-      print *, "Tvals, K, out",Tsurf,T1,T2
 
       if ( hs + hi > 0. ) then
           Tsurf = MIN(0. + tempCtoK, Tsurf)

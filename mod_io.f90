@@ -259,7 +259,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Working variables
     integer, allocatable :: dimlens(:)
-    integer :: time_slice, i, j
+    integer :: time_slice
+!    integer :: time_slice, i, j
     real, dimension(:,:), allocatable :: data_ll
     character(len=short_string), dimension(:), allocatable :: dimnames
     character(len=long_string) :: fname
@@ -441,11 +442,11 @@ double precision function netCDF_time(self, time_in) result(time_out)
 
     ! Working variables
     integer :: i, j
-    real :: x1, x2, y1, y2, x, y
+!    real :: x1, x2, y1, y2, x, y
 
     real :: mindst, thismindst, mindst_approx,dst1, dst2, dst3, dst4
 
-    integer :: time_c, time_cr, time_cm
+!    integer :: time_c, time_cr, time_cm
 
     real :: dlat2, dlon2, approx_dst, this_lon_in
     integer :: dlat, dlon
@@ -674,7 +675,7 @@ double precision function netCDF_time(self, time_in) result(time_out)
  
     ! Working variables
     integer :: i, j
-    real :: x1, x2, y1, y2, x, y
+!    real :: x1, x2, y1, y2, x, y
 
     do i = 1, size(self%data2D,1)
       do j = 1, size(self%data2D,2)
@@ -733,7 +734,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     integer, intent(out) :: a, b
 
     ! local variables
-    logical :: check, is_increasing
+!    logical :: check, is_increasing
+    logical :: is_increasing
     integer :: test
 
     is_increasing = vx(2) .gt. vx(1)
@@ -829,8 +831,8 @@ double precision function netCDF_time(self, time_in) result(time_out)
     ! Working variables
     ! We set time to 0. becuase ncio requires some data for the initial time
     double precision, parameter :: time = 0.
-    character(len=long_string) :: time_string, dimname
-    integer :: i
+    character(len=long_string) :: time_string !, dimname
+!    integer :: i
 
     ! Save the file name
     self%fname = fname

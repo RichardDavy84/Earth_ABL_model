@@ -23,9 +23,11 @@ c***********************************************************************
 c     1    ntlw, ntsw, mslhf, msshf,
      1    slon,
      1    semis,rlat,z0_in,
-     1    ct_ice,
-     1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
-     1    sic, sit, snt, sst, !HCRadd
+c     1    ct_ice,
+c     1    taur,p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
+c     1    sic, sit, snt, sst, !HCRadd
+     1    p0,ds_in,ha,jd,nj,nv,dedzm,dedzt,zm,zt,
+     1    sit, snt, sst, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
      1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_level, 
@@ -57,9 +59,13 @@ C------------------------------------------------------------
 C + nj,nv,dedzm,dedzt,zm,zt,u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar from the initialisation files
 C------------------------------------------------------------
 
-      use physics_vars, only: ustar,pr,z0,zref,ztop,eta1,deta,rlb,
-     1 betam, betah, gammam, gammah,ct_atmos,alpha, betag, ds, fc, grav,
-     2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
+C      use physics_vars, only: ustar,pr,z0,zref,ztop,eta1,deta,rlb,
+C     1 betam, betah, gammam, gammah,ct_atmos,alpha, betag, ds, fc, grav,
+C     2 rl0, tg, ug, vg, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
+C     3 wqi0, wt0
+      use physics_vars, only: ustar,pr,ztop,deta,
+     1 betam, betah, gammam, gammah,alpha, betag, ds, fc, grav,
+     2 rl0, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
      3 wqi0, wt0
 
       IMPLICIT none
@@ -67,60 +73,68 @@ C------------------------------------------------------------
       PARAMETER(nw=0,ir=121)
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv),psi(nj,nv)
-      REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)
+C      REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),tvis(nj),u(nj),v(nj)
+      REAL p(nj),q(nj),qi(nj),t(nj),theta(nj),u(nj),v(nj)
       REAL e(nj),ep(nj),kh(nj),km(nj),tl(nj),tld(nj),uw(nj),vw(nj),
-     1     wq(nj),wqi(nj),wt(nj),hlw(nj),hsw(nj),rnet(nj)
-      REAL turbhr(nj),hu(nj),hd(nj),fu(nj+1),fd(nj+1),su(nj+1),sd(nj+1)
+     1     wq(nj),wqi(nj),wt(nj) !,rnet(nj)
+C     1     wq(nj),wqi(nj),wt(nj),hlw(nj),hsw(nj),rnet(nj)
+C      REAL turbhr(nj),hu(nj),hd(nj),fu(nj+1),fd(nj+1),su(nj+1),sd(nj+1)
+      REAL turbhr(nj) !,hu(nj),hd(nj),fu(nj+1),fd(nj+1),su(nj+1),sd(nj+1)
       REAL dudz(nj),dvdz(nj),dthdz(nj),rif(nj),rlmo(nj)
       REAL zm(nj),zt(nj),dedzm(nj),dedzt(nj),wa(nv)
-      REAL endTime,sol1,taur
+C      REAL endTime,sol1,taur
       REAL pi,rpi
-      INTEGER ipvt(nv),i,j,k,l,ttd,jj
-      REAL aconst,angle,emin,eps,blh,rlmin,rln,rls,rifc,wlo,zm0
+C      INTEGER ipvt(nv),i,j,k,l,ttd,jj
+      INTEGER ipvt(nv),i,j,l,jj
+C      REAL aconst,angle,emin,eps,blh,rlmin,rln,rls,rifc,wlo,zm0
+      REAL emin,eps,rlmin,rln,rls,rifc
       REAL fphi_m
       EXTERNAL fphi_m
-      REAL zout(3),tout(3),wind,zwind
-      CHARACTER*30 dname,fname
+C      REAL zout(3),tout(3),wind,zwind
+      REAL zout(3),zwind
+C      CHARACTER*30 dname,fname
       DATA zout,zwind/0.25,0.5,1.,1.3/
-      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht,blht_nudge,blht_max
-      REAL*8 forcing
+C      REAL t01,q01,qi01,blht,ss05,ssz1,ssz2,rif_blht,blht_nudge,blht_max
+      REAL blht,ss05,ssz1,ssz2,rif_blht,blht_nudge,blht_max
+C      REAL*8 forcing
 
-      REAL dblht,dL
-      REAL*8 dtvis(nj),tvisk(ir)
-      REAL*8 wc(ir,nj)
-      REAL*8 conc1(ir,nj),conc2(ir,nj),dlamb,dzetad
+C      REAL dblht,dL
+C      REAL*8 dtvis(nj),tvisk(ir)
+C      REAL*8 wc(ir,nj)
+C      REAL*8 conc1(ir,nj),conc2(ir,nj),dlamb,dzetad
       REAL p0
-      REAL*8 zd(nj),rad(ir),scaled(ir),zmd(nj),F(ir,nj),F1(ir,nj)
-      REAL*8 value
+C      REAL*8 zd(nj),rad(ir),scaled(ir),zmd(nj),F(ir,nj),F1(ir,nj)
+C      REAL*8 value
 
-      REAL*8 tice(nj)
+C      REAL*8 tice(nj)
 
       REAL slon
-      REAL t850,height_t850,u_in,v_in
-      REAL albedo,semis,rlat,emis
-      INTEGER Location
+C      REAL t850,height_t850,u_in,v_in
+      REAL albedo,semis,rlat !,emis
+c      INTEGER Location
 c      REAL*8 u_in,v_in
       REAL ustar_in,z0_in
       INTEGER ds_in
 
       INTEGER nplev
-      INTEGER np,nloc,min_Loc,max_Loc,Loc_non_zero
+      INTEGER np,min_Loc,max_Loc !, nloc, Loc_non_zero
       REAL min_zm,max_zm
       INTEGER jj_justbelow
       PARAMETER(nplev=12)
       REAL t_hPa(nplev),u_hPa(nplev),v_hPa(nplev),hPa(nplev)
       REAL t_Pa_to_z(nj),u_Pa_to_z(nj),v_Pa_to_z(nj)
-      INTEGER Locations(nplev)
+C      INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
       REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
       REAL nudge_justbelow_bl
-      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
+c      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
+      REAL zfrc_top,zfrc,rif_frac
       INTEGER hloc
 
 c     for conductive heat flux
       REAL sst
-      REAL sic, sit, snt, Qia, dQiadT, Tsurf      
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
+      REAL sit, snt, dQiadT !, sic, Qia, Tsurf      
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta !,ct_ice
 
       INTEGER do_si_coupling, nudge_level
 
@@ -146,8 +160,10 @@ c--------- Data on celestial dynamics
       DATA nhrs,daysec/24,86165./   
       INTEGER jd ! Julian day - this is input
 c---------Some variables used in surface energy balance calculations
-      REAL albedo1,angv,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rho,
-     1     sdir,sw,swi,fnqs,ERAgflux
+c      REAL albedo1,angv,cc,cdec,cdh,dlw,dsw,e0,gflux,h0,ha,lw,rho,
+      REAL albedo1,angv,cc,cdec,e0,gflux,h0,ha,lw,rho,
+     1     sw,fnqs !,ERAgflux
+c     1     sdir,sw,swi,fnqs,ERAgflux
       REAL lw_net, sw_net
       REAL ar,rd,sdec,ss,sh,s0c
 c      REAL ntsw, ntlw, mslhf, msshf
@@ -398,17 +414,17 @@ c---------Calculate celestial mechanics for the current solar day
      1      +0.000719*COS(2.*ar)+0.000077*SIN(2.*ar)
 c	rd=3.03409791/2.+.046215*COS(ar)-.005188*COS(2.*ar)
 c     1                  +.134208*SIN(ar)+.004177*SIN(2.*ar)
-	ar=slon*rpi                             ! Areocentric longitude in radians
-	sdec=.3979486*SIN(ar)                   ! sin(sun decline angle)
-	cdec=SQRT(1.-sdec*sdec)                 ! cos(sun decline angle)
-	s0c=1373.*rd                            ! current solar flux at TOA
-	!  slon=slon+.986                       ! Areocentric longitude for next solar day
-	cc=cdec*COS(rlat*rpi)
-	ss=sdec*SIN(rlat*rpi)
+        ar=slon*rpi                             ! Areocentric longitude in radians
+        sdec=.3979486*SIN(ar)                   ! sin(sun decline angle)
+        cdec=SQRT(1.-sdec*sdec)                 ! cos(sun decline angle)
+        s0c=1373.*rd                            ! current solar flux at TOA
+        !  slon=slon+.986                       ! Areocentric longitude for next solar day
+        cc=cdec*COS(rlat*rpi)
+        ss=sdec*SIN(rlat*rpi)
 
 c---------Calculating surface fluxes using Monin-Obukhov similarity
-    !      ha=(1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
-	  sh=cc*COS(ha)+ss                       ! Sin of solar height angle
+        ! ha=(1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
+          sh=cc*COS(ha)+ss                       ! Sin of solar height angle
 c==============Calculating hydrostatic pressure (mb)
 c        print *, "p before hydro ",p
 c        print *, "inputs",p(nj-1),t(nj),grav,rgas,deta,dedzt(nj-1)
@@ -417,8 +433,8 @@ c	print *, p(nj-1)-(p(nj-1)/t(nj))*(grav/rgas)*(deta/dedzt(nj-1))
 c	print *, p(nj-1)-p(nj-1)*rgas*deta/(t(nj)*grav*dedzt(nj-1))
 c	print *, p(nj-1)-p(nj-1)/t(nj)*grav/rgas*deta/dedzt(nj-1)
 c        print *, "all t ",t
-	do j=2,nj
-	  p(j)=p(j-1)-p(j-1)/t(j)*grav/rgas*deta/dedzt(j-1)
+        do j=2,nj
+          p(j)=p(j-1)-p(j-1)/t(j)*grav/rgas*deta/dedzt(j-1)
           turbhr(j)=t(j)                         !  Store T for output
         enddo
 c        print *, "p after hydro ",p
@@ -437,7 +453,9 @@ c     1              tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
 c---------Calculating finite difference matrix and lu decomposition
 
         CALL coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,theta,u,v,uw,vw,dedzm,
-     1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
+     1           dedzt,kh,km,tld,wa,ipvt,nj,nv)
+C     1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
+
 c---------Solving tridiagonal equations
 c        print *, "inputs to solve: "
 c             psi(j,1) = u (j) mean velocity                           *
@@ -482,14 +500,17 @@ c---------Updating the solution
           ep(j)=(alpha*e(j))**1.5/tld(j)
  110    CONTINUE
 c---------Converting potential temperature to the temperature
-	do 120 j=1,nj
-	  t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
+        do 120 j=1,nj
+          t(j)=theta(j)*(p(j)/p(1))**(rgas/cp)
  120    CONTINUE
 c      print *, "TRACK T:3",t(1)
 
 c---------Calculating turbulent length scales, eddy diffusivity & fluxes
-        CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
-     1              kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
+c        CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zm,zt,e,ep,
+c     1              kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,wlo,
+c     2              nj,nw)
+        CALL sublkf(u,v,theta,q,qi,dudz,dvdz,dthdz,dedzt,zt,e,ep,
+     1              kh,km,rif,rlmo,tl,tld,uw,vw,wt,wq,wqi,rifc,
      2              nj,nw)
 
           ustar=(uw(1)*uw(1)+vw(1)*vw(1))**.25
@@ -505,7 +526,7 @@ c---------Calculating turbulent length scales, eddy diffusivity & fluxes
 c==============Calculating radiative heating rates hlw, hsw,
 c==============and surface fluxes dlw, dsw, sdir
           q(1)=q(2)     ! surface air-q is made equal to first air-level
-	  albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
+          albedo1=albedo+.1*(1.-sh)   ! albedo is 10% higher for low sun
 c        CALL radia(p,q,t,tvis,hsw,hlw,fu,fd,su,sd,hu,hd,nj,
 c     1             s0c,sh,albedo1,cp,grav,sbc,semis,dlw,dsw,sdir)
 
@@ -527,11 +548,11 @@ c---------Computing short wave irradiation on slant ground
 c        CALL swisg(dsw,ha,rlat,sdec,sdir,sh,swi)
 c	  lw=dlw-sbc*semis*t(1)**4           ! LW net radiation at surface
 c          sw=(1.-albedo1)*swi                ! sw net rad at slant sfc, w/m2
-	    rho=1.*(p(1)+p(2))/rgas/(t(1)+t(2))
+            rho=1.*(p(1)+p(2))/rgas/(t(1)+t(2))
 c	    rho=100.*(p(1)+p(2))/rgas/(t(1)+t(2))
 
 c	  print *,"h0 inputs ",rho,cp,wt(1)                    ! sfc heat flux w/m2
-	  h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
+          h0=rho*cp*wt(1)                    ! sfc heat flux w/m2
           e0=rho*latent*wq(1)                ! sfc latent heat flux w/m2
 
 c         HERE lw is downward, NOT net - so need to compute!
@@ -627,7 +648,8 @@ c              print *, "t1 soil setting af ",t(1)
               ! QUESTION: use Tsurf_tmp = t(1) or Tsurf_tmp = tsoil(1) here??
               dQiadT = 4.*semis*sbc*(t(1)**3) !!! USE t(1) or tsoil(1) here???
               Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
-              call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+c              call thermoIce0(ds,gflux,dQiadT,sic,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
+              call thermoIce0(gflux,dQiadT,sit,snt,Tsurf_tmp)  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
               ! call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
 c              print *, "Tsurf from thermoIce0",Tsurf_tmp
 c              print *, "Tsurf af ",Tsurf_tmp
@@ -636,7 +658,8 @@ c              print *, "Tsurf af ",Tsurf_tmp
           elseif (do_si_coupling.eq.2) then    
               dQiadT = 4.*semis*sbc*(t(1)**3) !!! USE t(1) or tsoil(1) here???
               Tsurf_tmp = t(1) !!! USE t(1) or tsoil(1) here???
-              call Winton(ds,gflux,dQiadT,sw_net,sic,sit,snt,     
+c              call Winton(ds,gflux,dQiadT,sw_net,sic,sit,snt,     
+              call Winton(ds,gflux,dQiadT,sw_net,sit,snt,     
      1               Tsurf_tmp,tsoil(2),tsoil(3)) ! sic, sit and snt from nextsim. Qia and dQiadT and Tsurf computed from ABL (Tsurf also output)
 c              print *, "Tsurf af ",Tsurf_tmp
               t(1)=Tsurf_tmp

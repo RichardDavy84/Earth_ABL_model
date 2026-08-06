@@ -77,7 +77,8 @@ PROGRAM ABL
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Grid information
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  INTEGER :: ngr, mgr, igr, jgr, land_value
+!  INTEGER :: ngr, mgr, igr, jgr, land_value
+  INTEGER :: ngr, mgr, land_value
   INTEGER, DIMENSION(:,:), ALLOCATABLE :: mask
   REAL, DIMENSION(:,:), ALLOCATABLE :: rlat, rlon
   REAL, DIMENSION(nj) :: zm, zt, dedzm, dedzt
@@ -93,9 +94,11 @@ PROGRAM ABL
   TYPE(input_var) :: sic_now,sit_now, snt_now, sic_next,sit_next, snt_next ! From nextsim
   TYPE(input_var) :: sst_now,sst_next
   TYPE(input_var) :: sic_init, sit_init, snt_init, sic2_init, sit2_init, snt2_init ! Currently from nextsim or ERA5
-  REAL :: u850, v850, t850, sdlw, sdsw, q2m, q1, q2 !, ntlw, ntsw,mslhf,msshf
+!  REAL :: u850, v850, t850, sdlw, sdsw, q2m, q1, q2 !, ntlw, ntsw,mslhf,msshf
+  REAL :: sdlw, sdsw, q2m, q1, q2 !, ntlw, ntsw,mslhf,msshf
   REAL, DIMENSION(:,:,:), ALLOCATABLE :: sic, sit, snt !for conductive heat flux
-  REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf, sst !for conductive heat flux
+!  REAL, DIMENSION(:,:), ALLOCATABLE :: Tsurf, sst !for conductive heat flux
+  REAL, DIMENSION(:,:), ALLOCATABLE :: sst !for conductive heat flux
   TYPE(input_var) :: u700_now, u750_now, u775_now, u800_now, u825_now, u875_now
   TYPE(input_var) :: u900_now, u925_now, u950_now, u975_now, u1000_now
   TYPE(input_var) :: v700_now, v750_now, v775_now, v800_now, v825_now, v875_now
@@ -108,9 +111,9 @@ PROGRAM ABL
   TYPE(input_var) :: v900_next, v925_next, v950_next, v975_next, v1000_next
   TYPE(input_var) :: t700_next, t750_next, t775_next, t800_next, t825_next, t875_next
   TYPE(input_var) :: t900_next, t925_next, t950_next, t975_next, t1000_next
-  REAL :: u700, u750, u775, u800, u825, u875, u900, u925, u950, u975, u1000
-  REAL :: v700, v750, v775, v800, v825, v875, v900, v925, v950, v975, v1000
-  REAL :: t700, t750, t775, t800, t825, t875, t900, t925, t950, t975, t1000
+!  REAL :: u700, u750, u775, u800, u825, u875, u900, u925, u950, u975, u1000
+!  REAL :: v700, v750, v775, v800, v825, v875, v900, v925, v950, v975, v1000
+!  REAL :: t700, t750, t775, t800, t825, t875, t900, t925, t950, t975, t1000
   ! Then surface fields: Mean surface downward long-wave radiation
   ! flux; Mean surface downward short-wave radiation flux, surface
   ! pressure, specific humidity at surface, and temperature at surface
@@ -173,7 +176,7 @@ PROGRAM ABL
   REAL, PARAMETER :: pi=4.*ATAN(1.)
   REAL(KIND=4) :: slon
 
-  INTEGER :: s_year,s_month,s_day,e_year, e_month, e_day, timestep
+  INTEGER :: s_year,s_month,s_day,s_hour,e_year, e_month, e_day,e_hour, timestep
   REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init, const_ct_ice
   REAL, DIMENSION(:), ALLOCATABLE :: const_albedo, const_semis
 
@@ -185,7 +188,7 @@ PROGRAM ABL
  
   ! Read basic namelist
   namelist /grid_info/ fname, lon_name, lat_name, mask_name, land_value 
-  namelist /time_info/ s_year, s_month, s_day, e_year, e_month, e_day, timestep, mnt_out, hr_out 
+  namelist /time_info/ s_year, s_month, s_day, s_hour, e_year, e_month, e_day, e_hour, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
   namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level !, n_p_levels, pressure_levels
@@ -248,8 +251,8 @@ PROGRAM ABL
   ! time0 = datetime(2007,01,01)
   ! time1 = datetime(2007,01,01)
   ! dt = timedelta(seconds=10)
-  time0 = datetime(s_year,s_month,s_day)
-  time1 = datetime(e_year,e_month,e_day)
+  time0 = datetime(s_year,s_month,s_day,s_hour)
+  time1 = datetime(e_year,e_month,e_day,e_hour)
   dt = timedelta(seconds=timestep)
   ds = dt%getSeconds()
   nmts = hoursec/ds
@@ -259,7 +262,7 @@ PROGRAM ABL
   endif
   time = time0
   ERA_time = time0
-  print *, "start and end:",s_year,"-",e_month,"-",s_day," to ",e_year,"-",e_month,"-",e_day
+  print *, "start and end:",s_year,"-",e_month,"-",s_day,"h",s_hour," to ",e_year,"-",e_month,"-",e_day,"h",e_hour
 
   if (merge_seconds.gt.0) then
     merge_dt=timedelta(seconds=merge_seconds)
@@ -685,7 +688,7 @@ PROGRAM ABL
       enddo
       ! Now read in sea ice ICs if we want
       if (do_si_ics.eq.1) then
-        sst(m,n) = 271.15 !set to freezing point
+        sst(m,n) = 273.15 + 2. !set to 2 degrees above freezing point
         do n_si = 1,ncat
             sic(m,n,n_si) = const_sic_init(n_si)
             if (n_si.lt.ncat) then
@@ -753,7 +756,7 @@ PROGRAM ABL
             if (read_sst.eq.1) then
                 sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K 
             else
-                sst(m,n) = 271.15 !set to freezing point
+                sst(m,n) = 273.15 + 2. !set to 2degrees above freezing point
             endif
             ! Situation 1: one category of sea ice, one of open water
             if (ncat.lt.3) then ! does this apply to one category too? Shouldn't only have ice, there's always an open water
@@ -818,7 +821,7 @@ PROGRAM ABL
             if (read_sst.eq.1) then
                 sst(m,n) = sst_now%get_point(m,n) + 273.15 ! convert from C to K. This sst is taken from Moorings... 
             else
-                sst(m,n) = 271.15 !set to freezing point
+                sst(m,n) = 273.15 + 2.  !set to two degrees above freezing point for open water
             endif
             if (ncat.gt.2) then
                 ! In ERA, we only have one ice category. If we want others, we need nonzero conc in constants and read from there
@@ -856,28 +859,17 @@ PROGRAM ABL
       ! Do some initialising
       dedzs(m,n,:,:) = 0.
       print *, "HCR initialising tsoil ",m,n
-      tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
+      ! tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
+      tsoil(m,n,:,:) = MIN(t0%get_point(m,n),273.15) ! Initialise to this so that we don't have zeros in tsoil
+      tsoil(m,n,:,ncat) = 273.15 + 2. ! Set seawater tsoil to be 2 degrees above freezing
       zsoil(m,n,:,:) = 0.
-      if ( m .eq. 1 ) then
-          if (n .eq. 4 ) then
-              print *, "HCRadd tsoil",tsoil(m,n,:,:)
-              print *, "HCRadd mask",mask(m,n)
-          endif
-      endif
 
-
-      print *, "sic tots b4: ",sic(m,n,1),sic(m,n,2),sic(m,n,3),sic(m,n,1)+sic(m,n,2)+sic(m,n,3)
-      print *, "sit tots b4: ",sit(m,n,1),sit(m,n,2),sit(m,n,3)
       call check_seaice_values(sic(m,n,:),sit(m,n,:),snt(m,n,:),ncat)
-      print *, "sic tots af: ",sic(m,n,1),sic(m,n,2),sic(m,n,3),sic(m,n,1)+sic(m,n,2)+sic(m,n,3)
-      print *, "sit tots af: ",sit(m,n,1),sit(m,n,2),sit(m,n,3)
 
       do n_si = 1,ncat
           if (print_out.eq.1) then
               print *, "about to initialise for ", m, n, ncat
           endif
-          print *, "about to initialise for ", m, n, ncat
-          print *, "ice thick going in: ", m,n,ncat,ice_snow_thick(m,n,n_si)
     !     HCRadd QUESTION: do we need to include effects of model SIT and SNT here?
           if (use_d2m.eq.1) then
               call SpecHum_from_d2m(d0%get_point(m,n), p0%get_point(m,n), q0_val)
@@ -885,10 +877,10 @@ PROGRAM ABL
               q0_val = q0%get_point(m,n)
           endif
           call Initialize_NeXtSIM_ABL( &
-            albedo(m,n,n_si),                                                    & ! Internal or from coupler?
+!            albedo(m,n,n_si),                                                    & ! Internal or from coupler?
             u850_now%get_point(m,n), v850_now%get_point(m,n),               & ! From file
-            slon,                                                           & ! See above
-            semis(m,n,1),                                                     & ! Internal or from coupler?
+!            slon,                                                           & ! See above
+!            semis(m,n,1),                                                     & ! Internal or from coupler?
             rlat(m,n),                                                      &
             z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
             ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
@@ -938,6 +930,13 @@ PROGRAM ABL
 ! call srfv_all%add_var("1/LO")
   call srfv_all%add_var("T0")
   call srfv_all%add_var("blht")
+  call srfv_all%add_var("blht_col1")
+  if (ncat.gt.1) then
+      call srfv_all%add_var("blht_col2")
+      if (ncat.gt.2) then
+          call srfv_all%add_var("blht_col3")
+      endif
+  endif
   call srfv_all%add_var("rif_blht")
 !  print *, "Initialised srfv "
 
@@ -954,6 +953,23 @@ PROGRAM ABL
   call Turb%add_var("wqi", "zt")
 ! call Turb%add_var("rnet", "zt")
   call Turb%add_var("wt", "zt")
+  call Turb%add_var("e_col1", "zt")
+  call Turb%add_var("wt_col1", "zt")
+  call Turb%add_var("uw_col1", "zt")
+  call Turb%add_var("vw_col1", "zt")
+  if (ncat.gt.1) then
+      call Turb%add_var("e_col2", "zt")
+      call Turb%add_var("wt_col2", "zt")
+      call Turb%add_var("uw_col2", "zt")
+      call Turb%add_var("vw_col2", "zt")
+      if (ncat.gt.2) then
+          call Turb%add_var("e_col3", "zt")
+          call Turb%add_var("wt_col3", "zt")
+          call Turb%add_var("uw_col3", "zt")
+          call Turb%add_var("vw_col3", "zt")
+      endif
+  endif
+
 
   call Met%init('Met.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
   call Met%add_var("dummy", "zm")
@@ -1149,7 +1165,6 @@ PROGRAM ABL
       endif
       ! If repeat timestep forcing, only need to do this once...
       if (loaded_already.eq.0) then
-          print *, "loading ERA t850"
           call t850_now%read_input(ERA_time, "ERA")
           call u850_now%read_input(ERA_time, "ERA")
           call v850_now%read_input(ERA_time, "ERA")
@@ -1164,7 +1179,6 @@ PROGRAM ABL
     !      call sit_now%read_input(time, "Moorings")
     !      call snt_now%read_input(time, "Moorings")
     
-          print *, "loading ERA t850 next"
           call t850_next%read_input(next_time, "ERA")
           call u850_next%read_input(next_time, "ERA")
           call v850_next%read_input(next_time, "ERA")
@@ -1175,7 +1189,6 @@ PROGRAM ABL
           else
               call q2m_next%read_input(next_time, "ERA")
           endif
-          print *, "done"
     !      call sic_next%read_input(next_time, "Moorings")
     !      call sit_next%read_input(next_time, "Moorings")
     !      call snt_next%read_input(next_time, "Moorings")
@@ -1418,14 +1431,8 @@ PROGRAM ABL
                 v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
                 v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
                 v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
-                ! print *, "loaded nudging vars ",m,n
             endif
 
-            if (m.eq.1) then
-                    if (n.eq.4) then
-                            print *, "HCR tsoil b4",tsoil(m,n,:,1)
-                    endif
-            endif
             do n_si = 1, ncat
 
                 ! Update first q level with that from ERA5
@@ -1445,15 +1452,16 @@ PROGRAM ABL
                   semis(m,n,n_si),                                          & ! Internal or from coupler?
                   rlat(m,n),                                                &
                   z0(m,n,n_si),                                                    & ! constant z0 for now...Internal or from coupler?
-                  ct_ice(m,n,n_si),  &
+!                  ct_ice(m,n,n_si),  &
     !              z0(m,n),                                                  & ! Internal or from coupler?
-                  taur(m,n),                                                & ! Internal variable
+!                  taur(m,n),                                                & ! Internal variable
                   p0%get_point(m,n),                                        & ! From file
                   ds, ha, jd,                                               &
                   nj,                                                       & ! Number of vertical grid points
                   nv,                                                       & ! Always 6?
                   dedzm,dedzt,zm,zt,                                        & ! Output grid definitions?
-                  sic(m,n,n_si), sit(m,n,n_si), snt(m,n,n_si),sst(m,n),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
+!                  sic(m,n,n_si), 
+                  sit(m,n,n_si), snt(m,n,n_si),sst(m,n),   & ! used for conductive heat flux !!! WILL NEED THESE TO BE MULTIDIMENSIONAL
                   u_each_cat(m,n,:,n_si), v_each_cat(m,n,:,n_si), t_each_cat(m,n,:,n_si), &
                   q_each_cat(m,n,:,n_si), qi_each_cat(m,n,:,n_si),        & ! prognostics
                   e_each_cat(m,n,:,n_si), ep_each_cat(m,n,:,n_si), uw_each_cat(m,n,:,n_si), &
@@ -1583,6 +1591,13 @@ PROGRAM ABL
     !        call srfv_all%append_var("1/LO", wlo)
           call srfv_all%append_var("T0", t(:,:,1))
           call srfv_all%append_var("blht", blht)
+          call srfv_all%append_var("blht_col1", blht_each_cat(:,:,1))
+          if (ncat.gt.1) then
+              call srfv_all%append_var("blht_col2", blht_each_cat(:,:,2))
+              if (ncat.gt.2) then
+                  call srfv_all%append_var("blht_col3", blht_each_cat(:,:,3))
+              endif
+          endif
           call srfv_all%append_var("rif_blht", rif_blht)
 
           call srfv_balance%append_time(time)
@@ -1714,6 +1729,22 @@ PROGRAM ABL
         call Turb%append_var("wqi", wqi)
   !      call Turb%append_var("rnet", rnet)
         call Turb%append_var("wt", wt)
+        call Turb%append_var("e_col1",e_each_cat(:,:,:,1))
+        call Turb%append_var("wt_col1",e_each_cat(:,:,:,1))
+        call Turb%append_var("uw_col1",e_each_cat(:,:,:,1))
+        call Turb%append_var("vw_col1",e_each_cat(:,:,:,1))
+        if (ncat.gt.1) then
+            call Turb%append_var("e_col2",e_each_cat(:,:,:,2))
+            call Turb%append_var("wt_col2",e_each_cat(:,:,:,2))
+            call Turb%append_var("uw_col2",e_each_cat(:,:,:,2))
+            call Turb%append_var("vw_col2",e_each_cat(:,:,:,2))
+            if (ncat.gt.2) then
+                call Turb%append_var("e_col3",e_each_cat(:,:,:,3))
+                call Turb%append_var("wt_col3",e_each_cat(:,:,:,3))
+                call Turb%append_var("uw_col3",e_each_cat(:,:,:,3))
+                call Turb%append_var("vw_col3",e_each_cat(:,:,:,3))
+            endif
+        endif
 
       ENDIF
 !$OMP END MASTER

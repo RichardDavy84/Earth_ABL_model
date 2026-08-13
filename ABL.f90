@@ -132,6 +132,8 @@ PROGRAM ABL
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: gflux, lw_net, sw_net, h0, e0
   REAL, DIMENSION(nplev) :: zp 
 
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: t_Pa_to_z
+
   INTEGER :: repeat_forcing, loaded_already, mooring_or_superice
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Prognostic variables
@@ -155,7 +157,9 @@ PROGRAM ABL
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
   INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_level, read_sst
-  INTEGER :: print_out
+  REAL :: nudge_above_bl, nudge_in_bl
+  INTEGER :: nudge_grad
+  INTEGER :: print_out, print_out2
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -191,7 +195,8 @@ PROGRAM ABL
   namelist /time_info/ s_year, s_month, s_day, s_hour, e_year, e_month, e_day, e_hour, timestep, mnt_out, hr_out 
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
-  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level !, n_p_levels, pressure_levels
+  namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level, &
+          nudge_above_bl, nudge_in_bl, nudge_grad !, n_p_levels, pressure_levels
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
   namelist /debug_info/ print_out
@@ -302,6 +307,8 @@ PROGRAM ABL
 
   ALLOCATE(t_hPa(mgr,ngr,nplev))
   ALLOCATE(u_hPa,v_hPa,mold=t_hPa)
+
+  ALLOCATE(t_Pa_to_z(mgr,ngr,nj))
 
   ALLOCATE(dedzs(mgr,ngr,ni,ncat))
   ALLOCATE(tsoil,zsoil,mold=dedzs)
@@ -979,6 +986,7 @@ PROGRAM ABL
   call Met%add_var("p", "zm")
   call Met%add_var("q", "zm")
   call Met%add_var("qi", "zm")
+  call Met%add_var("t_from_ERA", "zm")
 
   ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
   call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
@@ -1472,8 +1480,9 @@ PROGRAM ABL
                   blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
-                  do_si_coupling, nudge_level, & 
-                  gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si))
+                  do_si_coupling, nudge_level, nudge_above_bl, nudge_in_bl, nudge_grad, & 
+                  gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si), &
+                  t_Pa_to_z(m,n,:))
               
                 if (do_si_coupling == 0.) then
                   ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
@@ -1631,6 +1640,7 @@ PROGRAM ABL
           call Met%append_var("p", p)
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
+          call Met%append_var("t_from_ERA", t_Pa_to_z)
  
           call Met_SI1%append_time(time)
           call Met_SI1%append_var("u", u_each_cat(:,:,:,1))

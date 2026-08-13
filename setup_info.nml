@@ -1,18 +1,27 @@
 &grid_info
-  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/grid.nc_sample",
+  fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/small_BS.nc",
+  ! fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/small_Bering.nc",
+  ! fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/very_small_Bering_LA.nc",
+  ! fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/mask_LargeArctic.nc",
+  !! fname = "/cluster/projects/nn9878k/hregan/ABL/data/grids/grid.nc_sample",
   lon_name = "plon",
   lat_name = "plat",
   mask_name = "mask",
+  ! lon_name = "longitude",
+  ! lat_name = "latitude",
+  ! mask_name = "mask",
   land_value = 0     ! Some masks give land as 1, and some as 0
 /
 
 &time_info
   s_year = 2007,
-  s_month = 1,
-  s_day = 1,
+  s_month = 11,
+  s_day = 11,
+  s_hour = 1,
   e_year = 2007,
-  e_month = 1,
-  e_day = 1,
+  e_month = 11,
+  e_day = 21,
+  e_hour = 23,
   timestep = 10, 
   mnt_out = 10,
   hr_out = 1
@@ -25,12 +34,12 @@
 /
 
 &seaice_info
-  ni = 10, ! This is the number of layers in the ice
-  do_si_coupling = -1, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. If -1, no response of sea ice to atmosphere. ICs below!
+  ni = 15, ! This is the number of layers in the ice
+  do_si_coupling = -1, ! if 1, couple to nxs. If 0, initialise and use thermoIce0. If -1, no response of sea ice to atmosphere. ICs below! if 2, use Winton
   ! This functionality needs to be adapted further! 
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
-  do_si_ics = 2, ! =1 means use constants in constants_info; =2 means from file
+  do_si_ics = 1, ! =1 means use constants in constants_info; =2 means from file
   seaice_ics_dir = "/cluster/projects/nn9878k/hregan/ABL/data",
   si_ics_ftype = "Moorings", ! Moorings or ERA
   read_sst = 0 ! if 1, read sst from the Moorings file. If 0, set to freezing point
@@ -42,6 +51,9 @@
   use_d2m = 0,        ! this decides whether to use specific humidity directly from q2m, or to compute from d2m (formula from nextsim). ! Always set to 0 - function not working so now reads q2m after using build_q2m_from_d2m_slp.py
   nudge_q2m = 1,
   nudge_level = 0,
+  nudge_above_bl = 0.8, 
+  nudge_in_bl = 0.2, 
+  nudge_grad = 3
   ! n_p_levels = 12,
   ! pressure_levels = 700., 750., 775., 800., 825., 850., 875., 900., 925., 950., 975., 1000.
 /
@@ -52,11 +64,15 @@
   ct_atmos = 0.1,
   const_ct_ice = 0.001,0.001,0.001,
   const_z0 = 0.001,0.001,0.001,
-  const_sic_init = 0.9, 0.05, 0.05, 
-  const_sit_init = 2.0, 0.2, 0.,
-  const_snt_init = 0.2, 0.02, 0.,
+  const_sic_init = 0.85, 0.0, 0.15, 
+  const_sit_init = 1.00, 0.0, 0.0,
+  const_snt_init = 0., 0., 0.,
   const_albedo = 0.63, 0.63, 0.07, ! ultimately a) read from coupled model and b) consider snow albedo
   const_semis = 0.996, 0.996, 0.95
 /
 
+&debug_info
+  print_out = 0
+/
+ 
 !  

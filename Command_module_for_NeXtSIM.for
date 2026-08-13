@@ -30,8 +30,9 @@ c     1    sic, sit, snt, sst, !HCRadd
      1    sit, snt, sst, !HCRadd
      1    u,v,t,q,qi,e,ep,uw,vw,wt,wq,wqi,km,kh,ustar_in,p,tld,blht,
      1    rif_blht,blht_max,ni,
-     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_level, 
-     1    gflux, lw_net, sw_net, h0, e0)
+     1    dedzs,tsoil,zsoil,dzeta,do_si_coupling, nudge_level,
+     1    nudge_above_bl,nudge_in_bl,nudge_grad,
+     1    gflux, lw_net, sw_net, h0, e0, t_Pa_to_z)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
 c     1    v750,t775,u775,v775,t800,u800,v800,t825,u825,v825,t850,
@@ -85,7 +86,7 @@ C      REAL turbhr(nj),hu(nj),hd(nj),fu(nj+1),fd(nj+1),su(nj+1),sd(nj+1)
 C      REAL endTime,sol1,taur
       REAL pi,rpi
 C      INTEGER ipvt(nv),i,j,k,l,ttd,jj
-      INTEGER ipvt(nv),i,j,l,jj
+      INTEGER ipvt(nv),i,j,l,jj,ndg
 C      REAL aconst,angle,emin,eps,blh,rlmin,rln,rls,rifc,wlo,zm0
       REAL emin,eps,rlmin,rln,rls,rifc
       REAL fphi_m
@@ -125,8 +126,11 @@ c      REAL*8 u_in,v_in
       REAL t_Pa_to_z(nj),u_Pa_to_z(nj),v_Pa_to_z(nj)
 C      INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
-      REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
-      REAL nudge_justbelow_bl
+c      REAL height_hPa,nudge_below_bl,nudge_above_bl,nudge_fac
+c      REAL nudge_justbelow_bl
+      REAL height_hPa,nudge_fac, nudge_above_bl, nudge_in_bl, ndiff
+      INTEGER nudge_grad,ind_nudge_scale,points_above_bl,points_below_bl
+      REAL nudge_scale(nudge_grad)
 c      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
       REAL zfrc_top,zfrc,rif_frac
       INTEGER hloc
@@ -210,9 +214,9 @@ c      here, read in an input file with defined pressure levels
        hPa(3)=950.
        hPa(2)=975.
        hPa(1)=1000.
-       nudge_above_bl=0.8
-       nudge_justbelow_bl=0.5
-       nudge_below_bl=0.2
+c       nudge_above_bl=0.8
+c       nudge_justbelow_bl=0.5
+c       nudge_below_bl=0.2
 cccccc
 c      print *, "TRACK T:1",t(1)
 c     INTERPOLATE
@@ -235,10 +239,11 @@ c - messy!!!
       min_Loc=1 !counterintuitive, but need highest of all minima
       max_Loc=nj ! "" ""
       do jj=1,nj ! Loop over z levels, find which one each height is in
-        u_Pa_to_z(jj)=0.
-        v_Pa_to_z(jj)=0.
-        t_Pa_to_z(jj)=0.
         hloc = minloc(abs(hPa-p(jj)/100.),1) ! This is the closest
+        ! initialise to something reasonable, i.e. not 0. Never used in practice
+        u_Pa_to_z(jj)=u_hPa(hloc)
+        v_Pa_to_z(jj)=v_hPa(hloc)
+        t_Pa_to_z(jj)=t_hPa(hloc)
         ! if (zm(jj).lt.40.) then !if close to surface, ignore
         !   min_Loc = MAX(min_Loc,jj+1) ! +1 since this one is also bad
         ! elseif ((p(jj)/100.).gt.(hPa(1))) then ! model level < lowest forcing
@@ -255,7 +260,6 @@ c         this is because height increases as j increases
            !if (zm_at_p(hloc-1).gt.40.) then
             zfrc_top=(p(jj)/100.-hPa(hloc-1))
             zfrc = zfrc_top/(hPa(hloc)-hPa(hloc-1))
-c            print *, "zfrc ",zfrc
             u_Pa_to_z(jj)=u_hPa(hloc-1)+zfrc*(u_hPa(hloc)-u_hPa(hloc-1))
             v_Pa_to_z(jj)=v_hPa(hloc-1)+zfrc*(v_hPa(hloc)-v_hPa(hloc-1))
             t_Pa_to_z(jj)=t_hPa(hloc-1)+zfrc*(t_hPa(hloc)-t_hPa(hloc-1))
@@ -293,15 +297,6 @@ c     minLoc and maxLoc accordingly
         enddo
       endif
 
-c      print *, "NEED TO MAKE THIS MORE ROBUST"
-c      do jj=1,nj ! Fill in any zeros. SHOULD NOT NE USED LATER; BUT SOMETIMES ARE...
-c        if (t_Pa_to_z(jj).eq.0.) then
-c          u_Pa_to_z(jj)=u_hPa(12)
-c          v_Pa_to_z(jj)=v_hPa(12)
-c          t_Pa_to_z(jj)=t_hPa(12)
-c        endif
-c      enddo
-
       if (blht_max.lt.0.) then
           ! this means that the boundary layer height has not yet been
           ! computed - so just set it really high so that all are
@@ -310,37 +305,52 @@ c      enddo
       else
           blht_nudge = blht_max
       endif
-c      print *, blht_nudge
       jj_justbelow = min_Loc
-c      print *, jj_justbelow
       do jj=min_Loc,max_Loc
           if(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
               jj_justbelow = MAX(jj,jj_justbelow)        
           endif
       enddo
-c      print *, jj_justbelow
-c      print *, "NUDGE"
-c      print *, "T adjustment, starts = ",t
-c      print *, "T adjustment, ERA = ",t_Pa_to_z
+      points_below_bl = floor(nudge_grad/2.)
+      if (floor(nudge_grad/2.).eq.(nudge_grad/2.)) then
+         points_above_bl = points_below_bl - 1
+      else
+         points_above_bl = points_below_bl
+      endif
+      nudge_scale(1)=nudge_in_bl
+      nudge_scale(nudge_grad)=nudge_above_bl
+      ndiff=nudge_above_bl-nudge_in_bl
+      do ndg=2,nudge_grad-1
+          nudge_scale(ndg)=nudge_in_bl + (ndg-1)*ndiff/(nudge_grad-1)
+      enddo
+         
       do jj=min_Loc,max_Loc
-         if ( jj.eq.jj_justbelow) then
-           nudge_fac=nudge_justbelow_bl*ds/3600.
-         elseif(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
-           nudge_fac=nudge_below_bl*ds/3600.
-         elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
-           nudge_fac=nudge_above_bl*ds/3600.
+         if (jj.le.(jj_justbelow-points_below_bl)) then
+            nudge_fac=nudge_scale(1)*ds/3600
+         elseif (jj.ge.(jj_justbelow+points_above_bl)) then
+            nudge_fac=nudge_scale(nudge_grad)*ds/3600
+         else
+            ind_nudge_scale= jj - (jj_justbelow - points_below_bl)+1
+            nudge_fac=nudge_scale(ind_nudge_scale)*ds/3600
          endif
+c         if ( jj.eq.jj_justbelow) then
+c           nudge_fac=nudge_justbelow_bl*ds/3600.
+c         elseif(zm(jj)<blht_nudge) then ! boundary layer (hardcoded for now!)
+c           nudge_fac=nudge_below_bl*ds/3600.
+c         elseif(zm(jj)>=blht_nudge) then ! boundary layer (hardcoded for now!)
+c           nudge_fac=nudge_above_bl*ds/3600.
+c         endif
          t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
          u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
          v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
       enddo
-c      print *, "TRACK T:2",t(1)
+c      print *, "TRACK T:2",t(1),t_Pa_to_z(1)
        ! Finally, for any z values above ERA5 inputs, set u and v to be
        ! the last ERA5 values
        do jj=max_Loc,nj
             u(jj)=u_Pa_to_z(max_Loc)
             v(jj)=v_Pa_to_z(max_Loc)
-       !     ! t(jj)=t_Pa_to_z(max_Loc)
+            t(jj)=t_Pa_to_z(max_Loc)
        enddo
 c       print *, "T adjustment, ends = ",t
 c      enddo
@@ -540,7 +550,7 @@ c	  enddo
 c==============Calculating waterice cloud formation/sublimation
           qi(1)=qi(2)
         CALL swcond(p,q,qi,t,cp,latent,nj)
-c      print *, "TRACK T:4",t(1)
+c        print *, "TRACK T:4",t(1)
 c        print *, "t after swcond", t
 
 c==============Calculating ground energy fluxes
@@ -694,7 +704,7 @@ c          call meltgrowth(ds,gflux,dQiadT,e0,sic,sit,snt,t(1))  ! sic, sit and 
 c          print *, "INTEG new sit and snt",sit,snt
         endif
         betag=grav/t(1)
-c      print *, "TRACK T:5",t(1)
+c        print *, "TRACK T:5",t(1)
 c        print *, "T: END LOOP"
 c        print *, "TSOIL_NOW ",tsoil
 

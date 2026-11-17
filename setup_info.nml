@@ -39,7 +39,7 @@
   ! This functionality needs to be adapted further! 
   ! Particularly making do_si_coupling=1 work...
   ! And making it work with thermoIce0. At this point, these conditions persist throughout the simulation
-  do_si_ics = 1, ! =1 means use constants in constants_info; =2 means from file
+  do_si_ics = 3, ! =1 means use constants in constants_info; =2 means from file; =3 means EXPERIMENT_03 settings
   seaice_ics_dir = "/cluster/projects/nn9878k/hregan/ABL/data",
   si_ics_ftype = "Moorings", ! Moorings or ERA
   read_sst = 0 ! if 1, read sst from the Moorings file. If 0, set to freezing point

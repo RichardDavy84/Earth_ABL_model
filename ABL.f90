@@ -132,7 +132,7 @@ PROGRAM ABL
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: gflux, lw_net, sw_net, h0, e0
   REAL, DIMENSION(nplev) :: zp 
 
-  REAL, DIMENSION(:,:,:), ALLOCATABLE:: t_Pa_to_z
+  REAL, DIMENSION(:,:,:), ALLOCATABLE:: u_Pa_to_z, v_Pa_to_z
 
   INTEGER :: repeat_forcing, loaded_already, mooring_or_superice
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -157,9 +157,9 @@ PROGRAM ABL
   REAL :: blht_sum_cat, rif_blht_sum_cat, ustar_sum_cat
   REAL :: area_conc, area_conc_ow
   INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_level, read_sst
-  REAL :: nudge_above_bl, nudge_in_bl
+  REAL :: nudge_above_bl, nudge_in_bl, fac_perc_per_min, fac_to_increment
   INTEGER :: nudge_grad
-  INTEGER :: print_out, print_out2
+  INTEGER :: print_out
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Output files
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -182,11 +182,11 @@ PROGRAM ABL
 
   INTEGER :: s_year,s_month,s_day,s_hour,e_year, e_month, e_day,e_hour, timestep
   REAL, DIMENSION(:), ALLOCATABLE :: const_sic_init, const_sit_init, const_snt_init, const_ct_ice
-  REAL, DIMENSION(:), ALLOCATABLE :: const_albedo, const_semis
+  REAL, DIMENSION(:), ALLOCATABLE :: const_albedo, const_semis, sic_before
 
   REAL :: q0_val
 
-  INTEGER :: time_c, time_cr, time_cm
+  INTEGER :: time_c, time_cr, time_cm, elapsed_days
 
 !  REAL :: height_hPa
  
@@ -308,13 +308,16 @@ PROGRAM ABL
   ALLOCATE(t_hPa(mgr,ngr,nplev))
   ALLOCATE(u_hPa,v_hPa,mold=t_hPa)
 
-  ALLOCATE(t_Pa_to_z(mgr,ngr,nj))
+  ALLOCATE(u_Pa_to_z(mgr,ngr,nj))
+  ALLOCATE(v_Pa_to_z,mold=u_Pa_to_z)
 
   ALLOCATE(dedzs(mgr,ngr,ni,ncat))
   ALLOCATE(tsoil,zsoil,mold=dedzs)
 
   ALLOCATE(gflux(mgr,ngr,ncat))
   ALLOCATE(lw_net,sw_net,h0,e0,mold=gflux)
+
+  ALLOCATE(sic_before(ncat))
 
   if (print_out.eq.1) then
       print *, "allocated arrays"
@@ -578,8 +581,8 @@ PROGRAM ABL
           call sic_init%read_input(time0, "ERA")
           ! WHAT TO DO FOR SNOW???
       endif
-  endif  
-  
+  endif
+
   if (print_out.eq.1) then
       print *, "initialised some"
       CALL system_clock(time_c, time_cr, time_cm)
@@ -633,9 +636,8 @@ PROGRAM ABL
       print *, "HCR time: ", time_c, time_cr, time_cm
   endif
 
-  if (do_si_coupling.eq.1) then
-    ni = 3 ! for Winton; othewise, use setup input for soil model
-  endif
+  ! SOILTDM uses the ni value from setup_info.nml.
+  ! Do not force ni=3 here; that setting belongs only to a 3-layer scheme.
 
   ! HCRadd Try initialising all cells of zsoil and tsoil as mask first
   tsoil(:,:,:,:) = land_value
@@ -852,7 +854,27 @@ PROGRAM ABL
             tsoil(m,n,:,n_si) = land_value
             zsoil(m,n,:,n_si) = land_value
           enddo      
-        endif 
+        endif
+      elseif (do_si_ics.eq.3) then
+        ! This is a particular case for the paper. Run for 5 days at SIC=100, 1 day at SIC=80, last days at SIC=100  
+        ! So do same as for ==1, but correct the sic
+        sst(m,n) = 273.15 + 2. !set to 2 degrees above freezing point
+        do n_si = 1,ncat
+            sic(m,n,n_si) = const_sic_init(n_si)
+            if (n_si.lt.ncat) then
+                sit(m,n,n_si) = const_sit_init(n_si)
+                snt(m,n,n_si) = const_snt_init(n_si)
+            else
+                sit(m,n,n_si) = 0.
+                snt(m,n,n_si) = 0.
+            endif
+            ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+        enddo
+        ! Now, for the EXPERIMENT 03 modification: 
+        !    we want columns that are not the first or last to remain the same
+        !    we want the last column (open water) to be put in the first column
+        sic(m,n,1) = MIN(sic(m,n,1) + const_sic_init(ncat),1.)
+        sic(m,n,ncat) = 0.
       endif
 
       print *, "initialised seaice"
@@ -867,7 +889,7 @@ PROGRAM ABL
       dedzs(m,n,:,:) = 0.
       print *, "HCR initialising tsoil ",m,n
       ! tsoil(m,n,:,:) = -4. + 273.15 ! t0%get_point(m,n) ! Initialise to this so that we don't have zeros in tsoil
-      tsoil(m,n,:,:) = MIN(t0%get_point(m,n),273.15) ! Initialise to this so that we don't have zeros in tsoil
+      tsoil(m,n,:,:) = MIN(t0%get_point(m,n),273.15) ! Kelvin: cap initial snow/ice temperature at melting
       tsoil(m,n,:,ncat) = 273.15 + 2. ! Set seawater tsoil to be 2 degrees above freezing
       zsoil(m,n,:,:) = 0.
 
@@ -889,8 +911,8 @@ PROGRAM ABL
 !            slon,                                                           & ! See above
 !            semis(m,n,1),                                                     & ! Internal or from coupler?
             rlat(m,n),                                                      &
-            z0(m,n,1),                                                            & ! constant z0 for now...Internal or from coupler?
-            ct_ice(m,n,1),                                                         & ! this is for the ice grid !!! CHECK THE RIGHT ONE!!!
+            z0(m,n,n_si),                                                         & ! category-specific roughness
+            ct_ice(m,n,n_si),                                                     & ! category-specific ice-grid stretching
             taur(m,n),                                                      & ! Internal variable
             p0%get_point(m,n), q0_val,                    & ! From file
             ! 263.15,                                          & ! TEST - INITIALISE ICE TEMPERATURE SURFACE TO BE -10 deg C REGARDLESS OF AIR TEMP
@@ -919,6 +941,10 @@ PROGRAM ABL
     endif 
    enddo
   enddo
+
+  print *, "UEACHCATINIT ",u_each_cat(:,:,31,:)
+  u_each_cat(:,:,:,:) = 0.
+  v_each_cat(:,:,:,:) = 0.
 
   if (print_out.eq.1) then
       print *, "about to initialise output files "
@@ -986,7 +1012,8 @@ PROGRAM ABL
   call Met%add_var("p", "zm")
   call Met%add_var("q", "zm")
   call Met%add_var("qi", "zm")
-  call Met%add_var("t_from_ERA", "zm")
+  call Met%add_var("u_from_ERA", "zm")
+  call Met%add_var("v_from_ERA", "zm")
 
   ! Whether ncat > 1 or not, we create this. This is so that if ncat = 1, we can check Met_SI1 = Met (validation)
   call Met_SI1%init('Met_SI1.nc', mgr, ngr, mask, rlon, rlat, zm=zm)
@@ -1132,6 +1159,8 @@ PROGRAM ABL
   
   loaded_already = 0
 
+  elapsed_days = -1
+
 !$OMP PARALLEL DEFAULT (SHARED) &
 ! $OMP& PRIVATE(tint, sdlw, sdsw, ntlw, ntsw, mslhf, msshf) &
 !$OMP& PRIVATE(tint, sdlw, sdsw, q2m) &
@@ -1152,6 +1181,7 @@ PROGRAM ABL
     print *, "starting"
     slon = (time%yearday()/365.2425)*360
     jd = time%getDay()
+    elapsed_days = elapsed_days + 1
     do jh = 1, 24
 
 !$OMP MASTER
@@ -1319,6 +1349,27 @@ PROGRAM ABL
               q2m = hourint(tint, q2m_now%get_point(m,n), q2m_next%get_point(m,n))
             endif
 
+            ! Keep track of previous sic in case any were zero
+            sic_before = sic(m,n,:)
+
+            if (do_si_ics.eq.3) then
+                ! This is where we decide what this day's SIC should be
+                fac_perc_per_min = 1. ! percent per minute to adapt expt3 concentration
+                fac_to_increment = (fac_perc_per_min/100.)/(60./ds)
+                if (elapsed_days.eq.5) then
+                    sic(m,n,1) = MAX(sic(m,n,1)-fac_to_increment,const_sic_init(1)) ! restore to ICs
+                    sic(m,n,ncat) = MIN(sic(m,n,ncat)+fac_to_increment,const_sic_init(ncat)) ! restore to ICs
+                elseif (elapsed_days.eq.6) then
+                    sic(m,n,1) = MIN(sic(m,n,1)+fac_to_increment,MIN(const_sic_init(1) + const_sic_init(ncat),1.))
+                    sic(m,n,ncat) = MAX(sic(m,n,ncat)-fac_to_increment,0.)
+                else
+                    sic(m,n,1) = MIN(const_sic_init(1) + const_sic_init(ncat),1.)
+                    sic(m,n,ncat) = 0.
+                endif
+            endif
+            ! print *, "HCREXP3",elapsed_days,sic(m,n,:)
+
+!!!!!!!!!!!!!!! HERE WE WILL READ IN SI VALUES FROM COUPLER
 !           QUESTION: do we want to do this interpolation for sic, sit and snt
 !           too??? At the moment, do that...
 !           ANSWER: ultimately, these will be at the coupling timestep. Quicker
@@ -1339,79 +1390,88 @@ PROGRAM ABL
 !            do n_si = 1,ncat
 !              call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
 !            enddo
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            call reinitialize_columns(sic_before,sic(m,n,:),ncat,nj,ni,tsoil(m,n,:,:),                 &
+                u_each_cat(m,n,:,:),v_each_cat(m,n,:,:),t_each_cat(m,n,:,:),q_each_cat(m,n,:,:),       &
+                qi_each_cat(m,n,:,:),e_each_cat(m,n,:,:),ep_each_cat(m,n,:,:),uw_each_cat(m,n,:,:),    &
+                vw_each_cat(m,n,:,:),wt_each_cat(m,n,:,:),wq_each_cat(m,n,:,:),wqi_each_cat(m,n,:,:),  &
+                km_each_cat(m,n,:,:),kh_each_cat(m,n,:,:),ustar_each_cat(m,n,:),p_each_cat(m,n,:,:),   &
+                tld_each_cat(m,n,:,:),blht_each_cat(m,n,:),rif_blht_each_cat(m,n,:),gflux(m,n,:),      &
+                h0(m,n,:),e0(m,n,:))
 
             if (loaded_already.eq.0) then
                 t_hPa(m,n,12) = hourint(tint, t700_now%get_point(m,n), t700_next%get_point(m,n))
                 if (t700_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,12) = -999.
+                  t_hPa(m,n,12) = -9999.
                 elseif (t700_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,12) = -999.
+                  t_hPa(m,n,12) = -9999.
                 endif
                 t_hPa(m,n,11) = hourint(tint, t750_now%get_point(m,n), t750_next%get_point(m,n))
                 if (t750_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,11) = -999.
+                  t_hPa(m,n,11) = -9999.
                 elseif (t750_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,11) = -999.
+                  t_hPa(m,n,11) = -9999.
                 endif
                 t_hPa(m,n,10) = hourint(tint, t775_now%get_point(m,n), t775_next%get_point(m,n))
                 if (t775_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,10) = -999.
+                  t_hPa(m,n,10) = -9999.
                 elseif (t775_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,10) = -999.
+                  t_hPa(m,n,10) = -9999.
                 endif
                 t_hPa(m,n,9) = hourint(tint, t800_now%get_point(m,n), t800_next%get_point(m,n))
                 if (t800_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,9) = -999.
+                  t_hPa(m,n,9) = -9999.
                 elseif (t800_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,9) = -999.
+                  t_hPa(m,n,9) = -9999.
                 endif
                 t_hPa(m,n,8) = hourint(tint, t825_now%get_point(m,n), t825_next%get_point(m,n))
                 if (t825_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,8) = -999.
+                  t_hPa(m,n,8) = -9999.
                 elseif (t825_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,8) = -999.
+                  t_hPa(m,n,8) = -9999.
                 endif
                 t_hPa(m,n,7) = hourint(tint, t850_now%get_point(m,n), t850_next%get_point(m,n))
                 if (t850_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,7) = -999.
+                  t_hPa(m,n,7) = -9999.
                 elseif (t850_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,7) = -999.
+                  t_hPa(m,n,7) = -9999.
                 endif
                 t_hPa(m,n,6) = hourint(tint, t875_now%get_point(m,n), t875_next%get_point(m,n))
                 if (t875_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,6) = -999.
+                  t_hPa(m,n,6) = -9999.
                 elseif (t875_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,6) = -999.
+                  t_hPa(m,n,6) = -9999.
                 endif
                 t_hPa(m,n,5) = hourint(tint, t900_now%get_point(m,n), t900_next%get_point(m,n))
                 if (t900_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,5) = -999.
+                  t_hPa(m,n,5) = -9999.
                 elseif (t900_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,5) = -999.
+                  t_hPa(m,n,5) = -9999.
                 endif
                 t_hPa(m,n,4) = hourint(tint, t925_now%get_point(m,n), t925_next%get_point(m,n))
                 if (t925_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,4) = -999.
+                  t_hPa(m,n,4) = -9999.
                 elseif (t925_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,4) = -999.
+                  t_hPa(m,n,4) = -9999.
                 endif
                 t_hPa(m,n,3) = hourint(tint, t950_now%get_point(m,n), t950_next%get_point(m,n))
                 if (t950_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,3) = -999.
+                  t_hPa(m,n,3) = -9999.
                 elseif (t950_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,3) = -999.
+                  t_hPa(m,n,3) = -9999.
                 endif
                 t_hPa(m,n,2) = hourint(tint, t975_now%get_point(m,n), t975_next%get_point(m,n))
                 if (t975_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,2) = -999.
+                  t_hPa(m,n,2) = -9999.
                 elseif (t975_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,2) = -999.
+                  t_hPa(m,n,2) = -9999.
                 endif
                 t_hPa(m,n,1) = hourint(tint, t1000_now%get_point(m,n), t1000_next%get_point(m,n))
                 if (t1000_now%get_point(m,n).lt.0) then
-                  t_hPa(m,n,1) = -999.
+                  t_hPa(m,n,1) = -9999.
                 elseif (t1000_next%get_point(m,n).lt.0) then
-                  t_hPa(m,n,1) = -999.
+                  t_hPa(m,n,1) = -9999.
                 endif
       
                 u_hPa(m,n,12) = hourint(tint, u700_now%get_point(m,n), u700_next%get_point(m,n))
@@ -1439,6 +1499,56 @@ PROGRAM ABL
                 v_hPa(m,n,3) = hourint(tint, v950_now%get_point(m,n), v950_next%get_point(m,n))
                 v_hPa(m,n,2) = hourint(tint, v975_now%get_point(m,n), v975_next%get_point(m,n))
                 v_hPa(m,n,1) = hourint(tint, v1000_now%get_point(m,n), v1000_next%get_point(m,n))
+
+                if (t_hPa(m,n,12).eq.-9999.) then
+                    u_hPa(m,n,12) = -9999.
+                    v_hPa(m,n,12) = -9999.
+                endif
+                if (t_hPa(m,n,11).eq.-9999.) then
+                    u_hPa(m,n,11) = -9999.
+                    v_hPa(m,n,11) = -9999.
+                endif
+                if (t_hPa(m,n,10).eq.-9999.) then
+                    u_hPa(m,n,10) = -9999.
+                    v_hPa(m,n,10) = -9999.
+                endif
+                if (t_hPa(m,n,9).eq.-9999.) then
+                    u_hPa(m,n,9) = -9999.
+                    v_hPa(m,n,9) = -9999.
+                endif
+                if (t_hPa(m,n,8).eq.-9999.) then
+                    u_hPa(m,n,8) = -9999.
+                    v_hPa(m,n,8) = -9999.
+                endif
+                if (t_hPa(m,n,7).eq.-9999.) then
+                    u_hPa(m,n,7) = -9999.
+                    v_hPa(m,n,7) = -9999.
+                endif
+                if (t_hPa(m,n,6).eq.-9999.) then
+                    u_hPa(m,n,6) = -9999.
+                    v_hPa(m,n,6) = -9999.
+                endif
+                if (t_hPa(m,n,5).eq.-9999.) then
+                    u_hPa(m,n,5) = -9999.
+                    v_hPa(m,n,5) = -9999.
+                endif
+                if (t_hPa(m,n,4).eq.-9999.) then
+                    u_hPa(m,n,4) = -9999.
+                    v_hPa(m,n,4) = -9999.
+                endif
+                if (t_hPa(m,n,3).eq.-9999.) then
+                    u_hPa(m,n,3) = -9999.
+                    v_hPa(m,n,3) = -9999.
+                endif
+                if (t_hPa(m,n,2).eq.-9999.) then
+                    u_hPa(m,n,2) = -9999.
+                    v_hPa(m,n,2) = -9999.
+                endif
+                if (t_hPa(m,n,1).eq.-9999.) then
+                    u_hPa(m,n,1) = -9999.
+                    v_hPa(m,n,1) = -9999.
+                endif
+
             endif
 
             do n_si = 1, ncat
@@ -1448,9 +1558,15 @@ PROGRAM ABL
                     q_each_cat(m,n,1,n_si) = q2m
                 endif
 
-                !!!!!! INITIALISE SEA ICE GRID !!!!!
-                call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni) ! Now call this here, not in integration 
-                call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+                ! SOILTDM must see the OLD zsoil/tsoil grid so it can remap
+                ! temperatures if sit+snt changes. Other legacy schemes retain
+                ! their previous grid-regeneration behaviour.
+                if (abs(do_si_coupling) /= 1) then
+                    call compute_dzeta(ice_snow_thick(m,n,n_si), ct_ice(m,n,n_si), dzeta(m,n,n_si), ni)
+                    call subsoilt_dedzs(dedzs(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),ct_ice(m,n,n_si),ni)
+                endif
+
+                ! print *, "TRACK MAIN u:A ",u_each_cat(m,n,31,n_si)
 
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
@@ -1480,14 +1596,27 @@ PROGRAM ABL
                   blht_each_cat(m,n,n_si), rif_blht_each_cat(m,n,n_si),blht_max(m,n),           &  ! prognostics
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
+                  ct_ice(m,n,n_si), &
                   do_si_coupling, nudge_level, nudge_above_bl, nudge_in_bl, nudge_grad, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si), &
-                  t_Pa_to_z(m,n,:))
-              
-                if (do_si_coupling == 0.) then
-                  ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+                  u_Pa_to_z(m,n,:), v_Pa_to_z(m,n,:))
+             
+                ! Keep the derived total thickness synchronized with sit/snt.
+                ! In interactive SOILTDM mode these may have changed through melt.
+                ice_snow_thick(m,n,n_si) = sit(m,n,n_si) + snt(m,n,n_si)
+
+                ! If a SOILTDM ice category melts completely, transfer its
+                ! area fraction to the open-water category (ncat). Partial melt
+                ! changes thickness only; concentration remains unchanged.
+                if (abs(do_si_coupling) == 1 .and. n_si < ncat) then
+                    if (ice_snow_thick(m,n,n_si) <= 1.e-8) then
+                        sic(m,n,ncat) = min(1., sic(m,n,ncat) + sic(m,n,n_si))
+                        sic(m,n,n_si) = 0.
+                    endif
                 endif
 
+                ! print *, "TRACK MAIN u:B ",u_each_cat(m,n,31,n_si)
+ 
             enddo
 
             !! After each loop, make sure we update the main arrays with a
@@ -1546,9 +1675,11 @@ PROGRAM ABL
               blht_sum_cat = blht_sum_cat + blht_each_cat(m,n,n_si)*area_conc
               rif_blht_sum_cat = rif_blht_sum_cat + rif_blht_each_cat(m,n,n_si)*area_conc
 
-              blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
+              ! blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
             enddo
       
+            blht_max(m,n) = maxval(blht_each_cat(m,n,:))
+
             ! now, add the new averaged arrays back to those to be carried
             ! forward
             u(m,n,:) = u_sum_cat
@@ -1640,8 +1771,10 @@ PROGRAM ABL
           call Met%append_var("p", p)
           call Met%append_var("q", q)
           call Met%append_var("qi", qi)
-          call Met%append_var("t_from_ERA", t_Pa_to_z)
- 
+          call Met%append_var("u_from_ERA", u_Pa_to_z)
+          call Met%append_var("v_from_ERA", v_Pa_to_z)
+          print *, "Should have appended... HCR2026"
+
           call Met_SI1%append_time(time)
           call Met_SI1%append_var("u", u_each_cat(:,:,:,1))
           call Met_SI1%append_var("v", v_each_cat(:,:,:,1))
@@ -1740,19 +1873,19 @@ PROGRAM ABL
   !      call Turb%append_var("rnet", rnet)
         call Turb%append_var("wt", wt)
         call Turb%append_var("e_col1",e_each_cat(:,:,:,1))
-        call Turb%append_var("wt_col1",e_each_cat(:,:,:,1))
-        call Turb%append_var("uw_col1",e_each_cat(:,:,:,1))
-        call Turb%append_var("vw_col1",e_each_cat(:,:,:,1))
+        call Turb%append_var("wt_col1",wt_each_cat(:,:,:,1))
+        call Turb%append_var("uw_col1",uw_each_cat(:,:,:,1))
+        call Turb%append_var("vw_col1",vw_each_cat(:,:,:,1))
         if (ncat.gt.1) then
             call Turb%append_var("e_col2",e_each_cat(:,:,:,2))
-            call Turb%append_var("wt_col2",e_each_cat(:,:,:,2))
-            call Turb%append_var("uw_col2",e_each_cat(:,:,:,2))
-            call Turb%append_var("vw_col2",e_each_cat(:,:,:,2))
+            call Turb%append_var("wt_col2",wt_each_cat(:,:,:,2))
+            call Turb%append_var("uw_col2",uw_each_cat(:,:,:,2))
+            call Turb%append_var("vw_col2",vw_each_cat(:,:,:,2))
             if (ncat.gt.2) then
                 call Turb%append_var("e_col3",e_each_cat(:,:,:,3))
-                call Turb%append_var("wt_col3",e_each_cat(:,:,:,3))
-                call Turb%append_var("uw_col3",e_each_cat(:,:,:,3))
-                call Turb%append_var("vw_col3",e_each_cat(:,:,:,3))
+                call Turb%append_var("wt_col3",wt_each_cat(:,:,:,3))
+                call Turb%append_var("uw_col3",uw_each_cat(:,:,:,3))
+                call Turb%append_var("vw_col3",vw_each_cat(:,:,:,3))
             endif
         endif
 

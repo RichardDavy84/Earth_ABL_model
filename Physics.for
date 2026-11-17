@@ -33,102 +33,410 @@ c
       return
       END
 c=======================================================================
-c             Subroutine SOILTDM -- Soil Temperature Model             =
+c            Subroutine SOILTDM -- Sea-ice Temperature Model           =
 c----------------------------------------------------------------------=
-c   To solve the diffusion equation at FIVE levels within the ground   =
-c              by using the implicit Crank-Nicholson scheme            =
+c One-dimensional snow/sea-ice thermodynamics on the existing          =
+c stretched grid. The surface node is a massless skin; thermal inertia =
+c is carried by the finite snow/ice control volumes beneath it.        =
+c                                                                      =
+c interactive_ice is set by one compile-time switch in                 =
+c Integrate_NeXtSIM_ABL.                                               =
+c                                                                      =
+c interactive_ice = 0 : fixed snow/ice thickness. Any surface energy   =
+c                       remaining after the surface reaches its melt   =
+c                       temperature is deliberately discarded.         =
+c                                                                      =
+c interactive_ice = 1 : excess surface energy melts snow first, then   =
+c                       sea ice. sit and snt are updated and the       =
+c                       temperature profile is remapped to the new     =
+c                       column thickness.                              =
+c                                                                      =
+c thermal_props_mode is a single local compile-time switch:            =
+c                                                                      =
+c   0 = fixed properties:                                              =
+c         cp_ice = 3000 J kg-1 K-1                                     =
+c         k_ice  = 2.0 W m-1 K-1                                       =
+c                                                                      =
+c   1 = temperature/salinity-dependent sea-ice properties (DEFAULT):   =
+c         cp = c0 + gamma*Sice/Tc**2                                   =
+c         k  = bubbly-brine function of Tc and Sice                    =
+c                                                                      =
+c Snow properties are fixed in both modes:                             =
+c         rho_s=330 kg m-3, cp_s=2110 J kg-1 K-1, k_s=0.30 W m-1 K-1   =
 c=======================================================================
-      SUBROUTINE soiltdm(dedzs,tsoil,zsoil,dzeta,snow_thick,gflux,dt,ni)
+      SUBROUTINE soiltdm(dedzs,tsoil,zsoil,dzeta,sit,snt,gflux,
+     1                   dt,ni,ct_ice,interactive_ice,sst)
       IMPLICIT none
-      INTEGER i,ni
-c      PARAMETER (ni=11)
-      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,snow_thick,gflux
-      INTEGER dt
-c---------Internal variables
-      REAL a(ni),b(ni),c(ni),r(ni)
-c      REAL dzeta2,rdif,rhoc,rlam,n,nv,rhoc2,rlam2
-      REAL dzeta2,rdif,rhoc,rlam,rhoc2,rlam2,sw_fp,fw_fp
 
-c          open (UNIT=55,FILE='q.DAT')
-c          read (55,*) n
-c          close (55)
-c      nv=(n/1000)/((n/1000)+((1-0.395)/1900))
-c      PRINT*,n,nv
-c      rlam=MAX(0.172,419*EXP(0-((alog10(12.1*((.395/nv)**4.05)))+2.7)))
-c      rhoc=1470000*(1-0.395)+nv*4186000
+      INTEGER i,j,ni,dt,interactive_ice
+      INTEGER, PARAMETER :: thermal_props_mode = 1
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta
+      REAL sit,snt,gflux,ct_ice,sst
+      REAL a(ni),b(ni),c(ni),r(ni),gface(ni-1)
+      REAL rhoi,rhos,rho0,c0,gamma,sice,socean
+      REAL kice_fixed,ksnow,rhoc2,lf
+      REAL cpice_fixed,cpice,rhocice,kice
+      REAL fw_fp,ice_fp,tbot
+      REAL d1,d2,dist,resist,ztop,zbot,cvdz,snowdz,icedz
+      REAL tc,tceff,tcond,tcondeff,carea,gup,gdn
+      REAL htarget,hold,tolh,tiny
+      REAL tmelt,qcond,qmelt,emelt,dm_snow,dm_ice,dh_top
 
-      DATA rhoc,rlam/910000,1.3/  !Ice   .404,.38  !800000.,.153125        ! .120125/,.18/      !1849600,1.05  1186600,.63
-c              2.96,2.2     2.268,1.9 garrat       2640000,2.7   !!2700000,2.025!!     2100000,1.68
-      DATA rhoc2,rlam2/150000,0.3/ ! Snow
-      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
-        dzeta2=dzeta*dzeta
-        rdif=.75         !.75 => implicit scheme, 0 => explicit scheme  Pielke 1984 MMM p290
-ccccccccccc
-cccccccccc
-c---------Before we do anything, make sure tsoil cannot exceed 273.15K here.
-c---------TO DO store any excess heat as equivalent ice melt
-      tsoil(1) = MIN(tsoil(1),fw_fp)        
-      if (zsoil(ni).eq.0) then
-        if (zsoil(ni).eq.0) then
-          ! it is open water or an unused column
-          tsoil(1) = 273.15 + 2.
-        endif
-      endif
-c---------Calculating coefficient of triangle matrix
-c.........First grid point        
-        i=1
-      a(i)=0.
-      b(i)=1.
-      c(i)=-1.
-c      r(i)=-gflux*zsoil(i+1)/rlam
-      if (abs(zsoil(i)).lt.snow_thick) then ! We're in the snow layer - use snow settings
-        r(i)=-gflux/rlam2*dzeta*2./(dedzs(i)+dedzs(i+1))
-      else
-        r(i)=-gflux/rlam*dzeta*2./(dedzs(i)+dedzs(i+1))
-      endif
-c.........Interior grid points
-      do 100 i=2,ni-1
-c	zzm=1./(.5*(zsoil(i+1)-zsoil(i-1))*(zsoil(i)-zsoil(i-1)))
-c	zzp=1./(.5*(zsoil(i+1)-zsoil(i-1))*(zsoil(i+1)-zsoil(i)))
-c      a(i)=-rdif*rlam/rhoc*zzm
-c      b(i)=1./dt+rdif*rlam/rhoc*(zzm+zzp)
-c      c(i)=-rdif*rlam/rhoc*zzp
-c      r(i)=tsoil(i)/dt+(1.-rdif)*rlam/rhoc*((tsoil(i+1)-tsoil(i))*zzp
-c     1                                     -(tsoil(i)-tsoil(i-1))*zzm)
-       if (abs(zsoil(i)).lt.snow_thick) then ! we are in the snow layer
-         a(i)=-rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i-1))
-         b(i)=1./dt+rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*( dedzs(i)
-     1                                 +dedzs(i-1)+dedzs(i)+dedzs(i+1) )
-         c(i)=-rdif*rlam2/rhoc2*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i+1))
-         r(i)=tsoil(i)/dt+(1.-rdif)*rlam2/rhoc2*dedzs(i)/dzeta2*
-     1                .5*( (tsoil(i+1)-tsoil(i))*(dedzs(i)+dedzs(i+1))
-     2                    -(tsoil(i)-tsoil(i-1))*(dedzs(i)+dedzs(i-1)) )
-       else
-         a(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i-1))
-         b(i)=1./dt+rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*( dedzs(i)
-     1                                 +dedzs(i-1)+dedzs(i)+dedzs(i+1) )
-         c(i)=-rdif*rlam/rhoc*dedzs(i)/dzeta2*.5*(dedzs(i)+dedzs(i+1))
-         r(i)=tsoil(i)/dt+(1.-rdif)*rlam/rhoc*dedzs(i)/dzeta2*
-     1                .5*( (tsoil(i+1)-tsoil(i))*(dedzs(i)+dedzs(i+1))
-     2                    -(tsoil(i)-tsoil(i-1))*(dedzs(i)+dedzs(i-1)) )
-       endif
- 100  continue
-c.........Last grid point
-       i=ni
-      a(i)=0.
-      b(i)=1.
-      c(i)=0.
-      r(i)=tsoil(ni) ! This should be -2 C as bottom of sea ice
-c---------Solving matrix for the solution
-       call strid(a,b,c,r,tsoil,ni)
-c       now done in strid
-c       tsoil(1) = MIN(tsoil(1),fw_fp) ! limit to freezing temp of SW (formula in nextsim)
-c
-      return
-      END
+c---------Densities [kg m-3]
+      DATA rhoi,rhos,rho0 /917.,330.,917./
+c---------Sea-ice heat-capacity parameters and salinity [ppt]
+      DATA c0,gamma,sice /2110.,17200.,5.0/
+c---------Fixed-property option for sea ice. These are representative
+c         winter values for roughly 5-ppt ice near -10 C, rounded to
+c         deliberately simple constants.
+      DATA cpice_fixed,kice_fixed /3000.,2.0/
+c---------Snow properties.  rho*c = 330*2110 = 696300 J m-3 K-1.
+      DATA ksnow /0.30/
+c---------Representative underlying-ocean salinity [ppt]
+      DATA socean /32.0/
+c---------Latent heat of fusion [J kg-1]
+      DATA lf /3.34e5/
+      DATA fw_fp /273.15/
+      DATA tiny,tolh /1.e-8,1.e-5/
+
+c---------Simple freezing-point relation Tf[C] = -0.055*S[ppt].
+      ice_fp=fw_fp-0.055*sice
+      tbot=fw_fp-0.055*socean
+      rhoc2=rhos*c0
+
+      IF (thermal_props_mode.NE.0 .AND.
+     1    thermal_props_mode.NE.1) THEN
+         STOP 'soiltdm: thermal_props_mode must be 0 or 1'
+      ENDIF
+
+      IF (ni.LT.3) RETURN
+
 c=======================================================================
-c        Subroutine STRID -- Solve for a vector U of length of N       =
-c                  the tridiaonal linear set of equations              =
+c     ZERO-THICKNESS COLUMN
+c=======================================================================
+      htarget=MAX(0.,sit+snt)
+      IF (htarget.LE.tiny) THEN
+         dzeta=0.
+         DO i=1,ni
+            zsoil(i)=0.
+            dedzs(i)=0.
+            tsoil(i)=sst
+         ENDDO
+         RETURN
+      ENDIF
+
+c=======================================================================
+c     REMAP IF THICKNESS CHANGED OUTSIDE THIS ROUTINE
+c
+c     SOILTDM must receive the OLD zsoil/tsoil arrays. Do not rebuild
+c     zsoil in ABL.f90 immediately before calling this routine.
+c=======================================================================
+      hold=MAX(0.,-zsoil(ni))
+      IF (hold.LE.tiny .OR. ABS(htarget-hold).GT.tolh) THEN
+         CALL remap_soil_grid(dedzs,tsoil,zsoil,dzeta,ct_ice,
+     1                        htarget,0.,tbot,ni)
+      ENDIF
+
+c=======================================================================
+c     SURFACE MELTING TEMPERATURE
+c     Snow: 0 C. Bare 5-ppt sea ice: -0.275 C.
+c=======================================================================
+      IF (snt.GT.tiny) THEN
+         tmelt=fw_fp
+      ELSE
+         tmelt=ice_fp
+      ENDIF
+      tsoil(1)=MIN(tsoil(1),tmelt)
+
+c=======================================================================
+c     FACE CONDUCTANCES [W m-2 K-1]
+c
+c     If an interval crosses the snow/ice interface, thermal resistances
+c     are added in series so exactly one conductive flux crosses it.
+c=======================================================================
+      DO j=1,ni-1
+         d1=-zsoil(j)
+         d2=-zsoil(j+1)
+         dist=d2-d1
+
+         IF (dist.LE.tiny) THEN
+            STOP 'soiltdm: non-monotonic zsoil'
+         ENDIF
+
+c--------Ice conductivity for this interval.
+c
+c        Mode 0: fixed k_ice = 2.0 W m-1 K-1.
+c
+c        Mode 1: Icepack-style bubbly-brine parameterization
+c
+c          k = (rho_i/rho_0) *
+C              (2.11 - 0.011*Tc + 0.09*Sice/Tc)
+c
+c        evaluated from the mean temperature of the two nodes.
+c        The temperature used in the salinity term is not allowed to
+c        become warmer than the assumed 5-ppt ice freezing point.
+         IF (thermal_props_mode.EQ.0) THEN
+            kice=kice_fixed
+         ELSE
+            tcond=0.5*(tsoil(j)+tsoil(j+1))-fw_fp
+            tcondeff=MIN(tcond,ice_fp-fw_fp)
+            kice=(rhoi/rho0)*(2.11-0.011*tcondeff+
+     1            0.09*sice/tcondeff)
+            kice=MAX(kice,0.10)
+         ENDIF
+
+         IF (d2.LE.snt) THEN
+            gface(j)=ksnow/dist
+         ELSEIF (d1.GE.snt) THEN
+            gface(j)=kice/dist
+         ELSE
+            resist=(snt-d1)/ksnow+(d2-snt)/kice
+            gface(j)=1./MAX(resist,tiny)
+         ENDIF
+      ENDDO
+
+c=======================================================================
+c     INTERIOR FINITE-VOLUME EQUATIONS
+c
+c     The first finite control volume extends to the physical surface.
+c     Thus the near-surface snow/ice has thermal inertia while tsoil(1)
+c     itself remains a massless skin boundary temperature.
+c=======================================================================
+      DO i=2,ni-1
+         IF (i.EQ.2) THEN
+            ztop=0.
+         ELSE
+            ztop=0.5*(-zsoil(i-1)-zsoil(i))
+         ENDIF
+
+         IF (i.EQ.ni-1) THEN
+            zbot=-zsoil(ni)
+         ELSE
+            zbot=0.5*(-zsoil(i)-zsoil(i+1))
+         ENDIF
+         cvdz=MAX(zbot-ztop,tiny)
+
+c--------Sea-ice heat capacity.
+c
+c        Mode 0: fixed cp_ice = 3000 J kg-1 K-1.
+c
+c        Mode 1: apparent heat capacity
+c
+c          cp = c0 + gamma*Sice/Tc**2
+c
+c        evaluated with beginning-of-step temperature to retain a
+c        linear matrix.  The denominator is not allowed to approach
+c        closer to zero than the assumed 5-ppt freezing temperature.
+         IF (thermal_props_mode.EQ.0) THEN
+            cpice=cpice_fixed
+         ELSE
+            tc=tsoil(i)-fw_fp
+            tceff=MIN(tc,ice_fp-fw_fp)
+            cpice=c0+gamma*sice/(tceff*tceff)
+         ENDIF
+         rhocice=rhoi*cpice
+
+c--------Split heat storage if a control volume straddles snow and ice.
+         snowdz=MAX(0.,MIN(zbot,snt)-ztop)
+         snowdz=MIN(snowdz,cvdz)
+         icedz=cvdz-snowdz
+         carea=rhoc2*snowdz+rhocice*icedz
+
+         gup=gface(i-1)
+         gdn=gface(i)
+
+c--------Fully implicit backward-Euler heat equation.
+         a(i)=-gup
+         b(i)=carea/REAL(dt)+gup+gdn
+         c(i)=-gdn
+         r(i)=carea/REAL(dt)*tsoil(i)
+      ENDDO
+
+c=======================================================================
+c     SURFACE FLUX BOUNDARY
+c     Existing ABL convention: gflux > 0 is downward into snow/ice.
+c=======================================================================
+      a(1)=0.
+      b(1)=gface(1)
+      c(1)=-gface(1)
+      r(1)=gflux
+
+c=======================================================================
+c     BOTTOM BOUNDARY: 32-ppt seawater freezing point (~-1.76 C)
+c=======================================================================
+      a(ni)=0.
+      b(ni)=1.
+      c(ni)=0.
+      r(ni)=tbot
+
+c---------First solution assumes all surface energy is conducted.
+      CALL strid(a,b,c,r,tsoil,ni)
+
+c=======================================================================
+c     SURFACE MELTING
+c
+c     If pure conduction requires Tsurface > tmelt, re-solve with the
+c     skin fixed at tmelt. Atmospheric flux minus the conductive uptake
+c     is then the surface melt-energy flux.
+c=======================================================================
+      IF (tsoil(1).GT.tmelt) THEN
+         a(1)=0.
+         b(1)=1.
+         c(1)=0.
+         r(1)=tmelt
+         CALL strid(a,b,c,r,tsoil,ni)
+
+         qcond=gface(1)*(tsoil(1)-tsoil(2))
+         qmelt=MAX(0.,gflux-qcond)
+
+c--------With interactive_ice=0, qmelt is intentionally discarded.
+         IF (interactive_ice.EQ.1 .AND. qmelt.GT.0.) THEN
+            emelt=qmelt*REAL(dt)
+            dm_snow=0.
+            dm_ice=0.
+
+c-----------Melt snow first.
+            IF (snt.GT.0.) THEN
+               dm_snow=MIN(snt,emelt/(rhos*lf))
+               snt=snt-dm_snow
+               emelt=emelt-dm_snow*rhos*lf
+            ENDIF
+
+c-----------Then melt sea ice with any remaining energy.
+            IF (emelt.GT.0. .AND. sit.GT.0.) THEN
+               dm_ice=MIN(sit,emelt/(rhoi*lf))
+               sit=sit-dm_ice
+               emelt=emelt-dm_ice*rhoi*lf
+            ENDIF
+
+            sit=MAX(0.,sit)
+            snt=MAX(0.,snt)
+            dh_top=dm_snow+dm_ice
+            htarget=sit+snt
+
+c-----------Remap surviving material after known surface ablation.
+            IF (htarget.GT.tiny) THEN
+               CALL remap_soil_grid(dedzs,tsoil,zsoil,dzeta,
+     1              ct_ice,htarget,dh_top,tbot,ni)
+
+               IF (dm_ice.GT.0.) THEN
+                  tsoil(1)=ice_fp
+               ELSEIF (snt.GT.tiny) THEN
+                  tsoil(1)=fw_fp
+               ELSE
+                  tsoil(1)=MIN(tsoil(1),ice_fp)
+               ENDIF
+            ELSE
+c--------------Complete melt: use SST/open-water state.
+               dzeta=0.
+               DO i=1,ni
+                  zsoil(i)=0.
+                  dedzs(i)=0.
+                  tsoil(i)=sst
+               ENDDO
+            ENDIF
+         ENDIF
+      ENDIF
+
+      IF (sit+snt.GT.tiny) tsoil(ni)=tbot
+
+      RETURN
+      END
+
+c=======================================================================
+c     REMAP_SOIL_GRID -- remap T when the column thickness changes     =
+c----------------------------------------------------------------------=
+c  dh_top > 0 : known surface ablation. A surviving parcel at new depth =
+c               d_new came from d_old=d_new+dh_top.                    =
+c                                                                       =
+c  dh_top = 0 : thickness changed externally and its origin is unknown. =
+c               Preserve fractional depth as a neutral assumption.      =
+c                                                                       =
+c  This fixes the old error in which zsoil moved while temperatures     =
+c  remained attached to unchanged array indices.                        =
+c=======================================================================
+      SUBROUTINE remap_soil_grid(dedzs,tsoil,zsoil,dzeta,ct_ice,
+     1                           hnew,dh_top,tbot,ni)
+      IMPLICIT none
+
+      INTEGER i,j,ni
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,ct_ice
+      REAL hnew,dh_top,tbot
+      REAL oldz(ni),oldt(ni),newz(ni),newdeds(ni)
+      REAL hold,dnew,dsrc,w,tiny
+
+      DATA tiny /1.e-8/
+
+      DO i=1,ni
+         oldz(i)=zsoil(i)
+         oldt(i)=tsoil(i)
+      ENDDO
+      hold=MAX(0.,-oldz(ni))
+
+      IF (hnew.LE.tiny) THEN
+         dzeta=0.
+         DO i=1,ni
+            zsoil(i)=0.
+            dedzs(i)=0.
+         ENDDO
+         RETURN
+      ENDIF
+
+c---------Build the new stretched grid.
+      CALL compute_dzeta(hnew,ct_ice,dzeta,ni)
+      CALL subsoilt_dedzs(newdeds,newz,dzeta,ct_ice,ni)
+
+      IF (hold.LE.tiny) THEN
+c--------No usable old column: initialize a linear profile.
+         DO i=1,ni
+            dnew=-newz(i)
+            tsoil(i)=oldt(1)+(tbot-oldt(1))*dnew/hnew
+         ENDDO
+      ELSE
+         DO i=1,ni
+            dnew=-newz(i)
+
+            IF (dh_top.GT.tiny) THEN
+c--------------Known surface ablation: translate material upward.
+               dsrc=MIN(hold,MAX(0.,dnew+dh_top))
+            ELSE
+c--------------Unknown external change: preserve fractional depth.
+               dsrc=MIN(hold,MAX(0.,dnew*hold/hnew))
+            ENDIF
+
+c-----------Linear interpolation on the old physical-depth grid.
+            IF (dsrc.LE.-oldz(1)) THEN
+               tsoil(i)=oldt(1)
+            ELSEIF (dsrc.GE.-oldz(ni)) THEN
+               tsoil(i)=oldt(ni)
+            ELSE
+               DO j=1,ni-1
+                  IF (dsrc.GE.-oldz(j) .AND.
+     1                dsrc.LE.-oldz(j+1)) THEN
+                     w=(dsrc-(-oldz(j)))/
+     1                 ((-oldz(j+1))-(-oldz(j)))
+                     tsoil(i)=(1.-w)*oldt(j)+w*oldt(j+1)
+                     GOTO 20
+                  ENDIF
+               ENDDO
+ 20            CONTINUE
+            ENDIF
+         ENDDO
+      ENDIF
+
+      DO i=1,ni
+         zsoil(i)=newz(i)
+         dedzs(i)=newdeds(i)
+      ENDDO
+      tsoil(ni)=tbot
+
+      RETURN
+      END
+
+c=======================================================================
+c        Subroutine STRID -- tridiagonal linear solver                 =
+c----------------------------------------------------------------------=
+c  Physical temperature limits are handled by SOILTDM, not here.       =
 c=======================================================================
       SUBROUTINE strid(a,b,c,r,u,n)
       IMPLICIT none
@@ -136,29 +444,27 @@ c=======================================================================
       REAL a(n),b(n),c(n),r(n),u(n)
       PARAMETER (NMAX=50)
       INTEGER j
-      REAL bet,gam(NMAX),sw_fp,fw_fp
+      REAL bet,gam(NMAX)
 
-      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
-c
-      if(b(1).eq.0.) stop 'tridag: rewrite equations'
-        bet=b(1)
-        u(1)=r(1)/bet
-      do 10 j=2,n
-        gam(j)=c(j-1)/bet
-        bet=b(j)-a(j)*gam(j)
-          if(bet.eq.0.) stop 'tridag failed'
-        u(j)=(r(j)-a(j)*u(j-1))/bet
- 10   continue
-      do 20 j=n-1,1,-1
-        u(j)=u(j)-gam(j+1)*u(j+1)
- 20   continue
-      do 30 j=1,n-1 ! now cap to freezing point
-        u(j)=MIN(u(j),fw_fp)
- 30   continue
-      u(n)=MIN(u(n),sw_fp)
+      IF (n.GT.NMAX) stop 'strid: n exceeds NMAX'
+      IF (b(1).EQ.0.) stop 'strid: rewrite equations'
 
-      return
+      bet=b(1)
+      u(1)=r(1)/bet
+      DO j=2,n
+         gam(j)=c(j-1)/bet
+         bet=b(j)-a(j)*gam(j)
+         IF (bet.EQ.0.) stop 'strid: failed'
+         u(j)=(r(j)-a(j)*u(j-1))/bet
+      ENDDO
+
+      DO j=n-1,1,-1
+         u(j)=u(j)-gam(j+1)*u(j+1)
+      ENDDO
+
+      RETURN
       END
+
 c-----------------------------------------------------------------------
 c                          Function FNQS                               -
 c----------------------------------------------------------------------
@@ -294,45 +600,46 @@ c
       return
       END
 c======================================================================*
-c    Subroutine SUBSOILT  --- calculating initial soil temperature     *
+c    Subroutine SUBSOILT -- initialize snow/ice temperature profile    *
+c----------------------------------------------------------------------*
+c  Initial profile runs from a surface no warmer than 0 C to the       *
+c  freezing point of representative 32-ppt underlying seawater.        *
 c======================================================================*
       SUBROUTINE subsoilt(dedzs,tsoil,zsoil,dzeta,t0,ct_ice,ni)
-
       IMPLICIT none
-
       INTEGER ni,i
-      REAL dedzs(ni),tsoil(ni),zsoil(ni)
-      REAL dzeta,t0,t0cap,ct_ice,sw_fp,fw_fp
-      REAL depth
+      REAL dedzs(ni),tsoil(ni),zsoil(ni),dzeta,t0,ct_ice
+      REAL t0cap,tbot,fw_fp,depth
 
-      !sw_fp from nextsim,-0.055*5 deg C
-      DATA sw_fp,fw_fp/272.875, 273.15/!sw_fp from nextsim,-0.055*5 deg C
-c
+      DATA fw_fp /273.15/
+      tbot=fw_fp-0.055*32.0
       t0cap=MIN(t0,fw_fp)
-        zsoil(1)=0.
-        ! dedzs(1)=1./ct_ice
-        dedzs(1)=-1./ct_ice
-        tsoil(1)=t0cap ! CAP AT MELTING POINT
+
+      zsoil(1)=0.
+      dedzs(1)=-1./ct_ice
+      tsoil(1)=t0cap
+
       DO i=2,ni
-        if (dzeta.eq.0.) then
-            zsoil(i) = 0.
-            tsoil(i) = t0cap 
-        else
-            depth=ct_ice*(EXP(dzeta*REAL(i-1.))-1.)
+         IF (dzeta.EQ.0.) THEN
+            zsoil(i)=0.
+            dedzs(i)=0.
+            tsoil(i)=t0cap
+         ELSE
+            depth=ct_ice*(EXP(dzeta*REAL(i-1))-1.)
             zsoil(i)=-depth
-            ! dedzs(i)=1./(depth+ct_ice)
             dedzs(i)=-1./(depth+ct_ice)
-        endif
+         ENDIF
       ENDDO
-      DO i=2,ni
-        if (dzeta.ne.0.) then
-         tsoil(i)=t0-(t0-sw_fp)*zsoil(i)/zsoil(ni)       
-c         tsoil(i)=t0cap-(t0cap-sw_fp)*zsoil(i)/zsoil(ni)        !298,223
-c        tsoil(i)=t0-(t0-271.15)*zsoil(i)/zsoil(ni)        !298,223
-        endif
-      ENDDO
-c
-      end subroutine
+
+      IF (dzeta.NE.0.) THEN
+         DO i=2,ni
+            tsoil(i)=t0cap-(t0cap-tbot)*zsoil(i)/zsoil(ni)
+         ENDDO
+      ENDIF
+
+      RETURN
+      END
+
 c======================================================================*
 c    Subroutine SUBSOILT_dedzs --- calculating initial ice grid        *
 c======================================================================*

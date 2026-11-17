@@ -35,7 +35,8 @@ module mod_io
 
     contains
       procedure, public :: init=>init_input_var, read_input, get_point, get_array
-      procedure, private :: calc_weights, interp2D, get_filename,calc_weights_2Dll,hvs
+      procedure, private :: calc_weights, interp2D, get_filename,calc_weights_2Dll
+      procedure, private, nopass :: hvs
   end type
 
   ! An output variable (private)
@@ -582,23 +583,23 @@ double precision function netCDF_time(self, time_in) result(time_out)
     
               if ( approx_dst > mindst_approx ) cycle
 
-              call hvs(self,this_lat_out,lat_in(i_in,j_in), &
+              call hvs(this_lat_out,lat_in(i_in,j_in), &
                        this_lon_out,lon_in(i_in,j_in),dst1)
               if (i_in.lt.size(lat_in,1)) then
-                  call hvs(self,this_lat_out,lat_in(i_in2,j_in), &
+                  call hvs(this_lat_out,lat_in(i_in2,j_in), &
                        this_lon_out,lon_in(i_in2,j_in),dst2)
               else
                 dst2 = 1.e30
               endif
               if (j_in.lt.size(lat_in,2)) then
-                  call hvs(self,this_lat_out,lat_in(i_in,j_in2), &
+                  call hvs(this_lat_out,lat_in(i_in,j_in2), &
                        this_lon_out,lon_in(i_in,j_in2),dst3)
               else
                 dst3 = 1.e30
               endif
               if (i_in.lt.size(lat_in,1)) then
                 if (j_in.lt.size(lat_in,2)) then
-                  call hvs(self,this_lat_out,lat_in(i_in2,j_in2), &
+                  call hvs(this_lat_out,lat_in(i_in2,j_in2), &
                        this_lon_out,lon_in(i_in2,j_in2),dst4)
                 else
                   dst4 = 1.e30
@@ -633,11 +634,12 @@ double precision function netCDF_time(self, time_in) result(time_out)
   
   end subroutine calc_weights_2Dll
 
-  subroutine hvs(self,lat_1,lat_2,lon_1,lon_2,dst)
+  ! subroutine hvs(self,lat_1,lat_2,lon_1,lon_2,dst)
+  subroutine hvs(lat_1,lat_2,lon_1,lon_2,dst)
 
     implicit none
 
-    class(input_var), intent(inout) :: self
+    ! class(input_var), intent(inout) :: self
 
     real, intent(in) :: lat_1, lat_2, lon_1, lon_2
     real, intent(inout) :: dst

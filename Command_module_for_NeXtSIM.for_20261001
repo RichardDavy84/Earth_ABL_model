@@ -124,10 +124,10 @@ c      REAL*8 u_in,v_in
       INTEGER jj_justbelow
       PARAMETER(nplev=12)
       REAL t_hPa(nplev),u_hPa(nplev),v_hPa(nplev),hPa(nplev)
-      REAL t_Pa_to_z(nj),u_Pa_to_z(nj),v_Pa_to_z(nj)
+      REAL t_Pa_to_z(nj),u_Pa_to_z(nj),v_Pa_to_z(nj), nudge_fac(nj)
 C      INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
-      REAL height_hPa,nudge_fac,nudge_above_bl,nudge_in_bl,ndiff
+      REAL height_hPa,nudge_above_bl,nudge_in_bl,ndiff
       INTEGER nudge_grad,ind_nudge_scale,points_above_bl,points_below_bl
       REAL nudge_scale(nudge_grad)
 c      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
@@ -332,12 +332,12 @@ c     Our nudging relaxation times are entered in hours. Do 1/input for per hour
          
       do jj=min_Loc,max_Loc
          if (jj.le.(jj_justbelow-points_below_bl)) then
-            nudge_fac=nudge_scale(1)*ds/3600
+            nudge_fac(jj)=nudge_scale(1)*ds/3600
          elseif (jj.ge.(jj_justbelow+points_above_bl)) then
-            nudge_fac=nudge_scale(nudge_grad)*ds/3600
+            nudge_fac(jj)=nudge_scale(nudge_grad)*ds/3600
          else
             ind_nudge_scale= jj - (jj_justbelow - points_below_bl)+1
-            nudge_fac=nudge_scale(ind_nudge_scale)*ds/3600
+            nudge_fac(jj)=nudge_scale(ind_nudge_scale)*ds/3600
          endif
       enddo
 
@@ -598,9 +598,9 @@ c              print *, "Tsurf af ",Tsurf_tmp
 
 CCCC MOVED FROM ABOVE, 20261002 HCR
       do jj=min_Loc,max_Loc
-         t(jj) = t(jj) +nudge_fac*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
-         u(jj) = u(jj) +nudge_fac*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
-         v(jj) = v(jj) +nudge_fac*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
+         t(jj) = t(jj) +nudge_fac(jj)*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
+         u(jj) = u(jj) +nudge_fac(jj)*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
+         v(jj) = v(jj) +nudge_fac(jj)*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
       enddo
        ! Finally, for any z values above ERA5 inputs, set u and v to be
        ! the last ERA5 values

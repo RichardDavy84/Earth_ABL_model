@@ -942,10 +942,6 @@ PROGRAM ABL
    enddo
   enddo
 
-  print *, "UEACHCATINIT ",u_each_cat(:,:,31,:)
-  u_each_cat(:,:,:,:) = 0.
-  v_each_cat(:,:,:,:) = 0.
-
   if (print_out.eq.1) then
       print *, "about to initialise output files "
   endif

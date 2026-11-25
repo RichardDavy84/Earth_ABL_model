@@ -133,6 +133,7 @@ PROGRAM ABL
   REAL, DIMENSION(nplev) :: zp 
 
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: u_Pa_to_z, v_Pa_to_z
+  REAL, DIMENSION(:,:), ALLOCATABLE :: u_era_tile,v_era_tile
 
   INTEGER :: repeat_forcing, loaded_already, mooring_or_superice
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1163,9 +1164,11 @@ PROGRAM ABL
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
+!$OMP& PRIVATE(u_era_tile, v_era_tile) &
 !$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
 !$OMP& FIRSTPRIVATE(time, merge_cnt, loaded_already)
 
+  allocate(u_era_tile(nj,ncat),v_era_tile(nj,ncat))
   tid = omp_get_thread_num()
 
   !$OMP CRITICAL
@@ -1564,6 +1567,8 @@ PROGRAM ABL
 
                 ! print *, "TRACK MAIN u:A ",u_each_cat(m,n,31,n_si)
 
+                ! Temporary diagnostic serialization: physics_vars is shared.
+!$OMP CRITICAL(ABL_PHYSICS_STATE)
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
@@ -1595,7 +1600,8 @@ PROGRAM ABL
                   ct_ice(m,n,n_si), &
                   do_si_coupling, nudge_level, nudge_above_bl, nudge_in_bl, nudge_grad, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si), &
-                  u_Pa_to_z(m,n,:), v_Pa_to_z(m,n,:))
+                  u_era_tile(:,n_si), v_era_tile(:,n_si))
+!$OMP END CRITICAL(ABL_PHYSICS_STATE)
              
                 ! Keep the derived total thickness synchronized with sit/snt.
                 ! In interactive SOILTDM mode these may have changed through melt.
@@ -1621,6 +1627,8 @@ PROGRAM ABL
             !inputs
             u_sum_cat(:) = 0
             v_sum_cat(:) = 0
+            u_Pa_to_z(m,n,:) = 0.
+            v_Pa_to_z(m,n,:) = 0.
             t_sum_cat(:) = 0
             q_sum_cat(:) = 0
             qi_sum_cat(:) = 0
@@ -1653,6 +1661,10 @@ PROGRAM ABL
               endif
               u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
               v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
+              u_Pa_to_z(m,n,:) = u_Pa_to_z(m,n,:) + &
+                                  u_era_tile(:,n_si)*area_conc
+              v_Pa_to_z(m,n,:) = v_Pa_to_z(m,n,:) + &
+                                  v_era_tile(:,n_si)*area_conc
               t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
               q_sum_cat = q_sum_cat + q_each_cat(m,n,:,n_si)*area_conc
               qi_sum_cat = qi_sum_cat + qi_each_cat(m,n,:,n_si)*area_conc
@@ -1674,7 +1686,15 @@ PROGRAM ABL
               ! blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
             enddo
       
-            blht_max(m,n) = maxval(blht_each_cat(m,n,:))
+            ! Exclude inactive tiles and invalid diagnosed BL heights.
+            if (any(sic(m,n,:).gt.1.e-8 .and. &
+                    blht_each_cat(m,n,:).gt.0.)) then
+              blht_max(m,n) = maxval(blht_each_cat(m,n,:), &
+                mask=(sic(m,n,:).gt.1.e-8 .and. &
+                      blht_each_cat(m,n,:).gt.0.))
+            else
+              blht_max(m,n) = -1.
+            endif
 
             ! now, add the new averaged arrays back to those to be carried
             ! forward
@@ -1890,6 +1910,7 @@ PROGRAM ABL
 
     enddo
   enddo
+  deallocate(u_era_tile,v_era_tile)
 !$OMP END PARALLEL
 
   CONTAINS

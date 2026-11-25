@@ -1319,15 +1319,17 @@ c                 b -- main  block diagonal of difference matrix       *
 c                 c -- upper block diagonal of difference matrix       *
 c                 d -- right hand side of difference matrix            *
 c***********************************************************************
-      SUBROUTINE coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,t,u,v,uw,vw,dedzm,
-     1           dedzt,kh,km,tld,wa,ipvt,nj,nv)
+      SUBROUTINE coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,t,u,v,uw,vw,
+     1 dedzm,dedzt,kh,km,tld,wa,ipvt,nj,nv,wind_fix_top,
+     2 u_top_era,v_top_era)
 c     1           dedzt,rnet,kh,km,tld,zm,wa,wlo,ipvt,nj,nv,nw)
 
       USE physics_vars, only: alpha, betag, deta, ds, fc, ug, vg, zero
 
       IMPLICIT none
 c      INTEGER nj,nv,nw,ipvt(nv)
-      INTEGER nj,nv,ipvt(nv)
+      INTEGER nj,nv,ipvt(nv),wind_fix_top
+      REAL u_top_era,v_top_era
 c      REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),d(nv)
       REAL a(nv,nv),alfa(nj,nv,nv),b(nv,nv),beta(nj,nv),c(nv,nv),
      1     d(nv)
@@ -1753,6 +1755,17 @@ c      d(5)=qi(nj)             ! qitop
       d(4)=zero               ! q(nj)
       d(5)=zero               ! qi(nj)
       d(6)=zero
+c     ERA5 Dirichlet wind condition if the top is in the free
+c     atmosphere and within the supplied ERA5 pressure range.
+c     Otherwise retain the original zero-shear boundary.
+      if (wind_fix_top.eq.1) then
+         a(1,1)=zero
+         b(1,1)=1.
+         d(1)=u_top_era
+         a(2,2)=zero
+         b(2,2)=1.
+         d(2)=v_top_era
+      endif
 c
         call factor(alfa,beta,wa,ipvt,j,nj,a,b,c,d,nv)
 c

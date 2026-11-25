@@ -53,7 +53,10 @@
   nudge_level = 0,
   nudge_above_bl = 0.8, 
   nudge_in_bl = 0.2, 
-  nudge_grad = 3
+  nudge_grad = 3,
+  ! Wind is separately constrained above the tallest active BL.
+  wind_tau_bl_hours = 5.0,   ! weak U,V relaxation within BL
+  wind_transition_m = 200.0 ! smooth cubic layer above BL
   ! n_p_levels = 12,
   ! pressure_levels = 700., 750., 775., 800., 825., 850., 875., 900., 925., 950., 975., 1000.
 /

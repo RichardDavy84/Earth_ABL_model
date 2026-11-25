@@ -133,6 +133,7 @@ PROGRAM ABL
   REAL, DIMENSION(nplev) :: zp 
 
   REAL, DIMENSION(:,:,:), ALLOCATABLE:: u_Pa_to_z, v_Pa_to_z
+  REAL, DIMENSION(:,:), ALLOCATABLE :: u_era_tile, v_era_tile
 
   INTEGER :: repeat_forcing, loaded_already, mooring_or_superice
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -158,6 +159,8 @@ PROGRAM ABL
   REAL :: area_conc, area_conc_ow
   INTEGER :: do_merge_columns, do_tiling, merge_seconds, do_si_coupling, use_d2m, do_si_ics, nudge_q2m, nudge_level, read_sst
   REAL :: nudge_above_bl, nudge_in_bl, fac_perc_per_min, fac_to_increment
+  REAL :: wind_tau_bl_hours, wind_transition_m, blht_raw
+  REAL, PARAMETER :: blht_decay_seconds = 300.0
   INTEGER :: nudge_grad
   INTEGER :: print_out
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -196,11 +199,15 @@ PROGRAM ABL
   namelist /merge_info/ do_tiling, merge_seconds, n_surf_cat
   namelist /seaice_info/ ni, do_si_coupling, do_si_ics, seaice_ics_dir, si_ics_ftype, read_sst 
   namelist /forcing_info/ forcing_dir, repeat_forcing, use_d2m, nudge_q2m, nudge_level, &
-          nudge_above_bl, nudge_in_bl, nudge_grad !, n_p_levels, pressure_levels
+          nudge_above_bl, nudge_in_bl, nudge_grad, &
+          wind_tau_bl_hours, wind_transition_m
   namelist /constants_info/ ztop, rlb, ct_atmos, const_ct_ice, const_z0, &
           const_sic_init, const_sit_init, const_snt_init, const_albedo, const_semis
   namelist /debug_info/ print_out
 
+  ! Defaults retain compatibility with setup_info files without the new keys.
+  wind_tau_bl_hours = 5.0
+  wind_transition_m = 200.0
   open(unit=10, file='setup_info.nml', status='old')
   read(10, nml=grid_info)
   read(10, nml=time_info)
@@ -220,6 +227,8 @@ PROGRAM ABL
   read(10, nml=debug_info)
 
   close(10)
+  if (wind_tau_bl_hours.le.0. .or. wind_transition_m.le.0.) &
+    stop 'Wind relaxation time and transition width must be positive'
 
   ! Initialization parameters (for compatibility with REAL*8 in function)
   !REAL(KIND=dbl) :: u_in, v_in, p_in, q_in, t_in
@@ -304,6 +313,7 @@ PROGRAM ABL
     wt_sum_cat,wq_sum_cat,wqi_sum_cat,km_sum_cat,kh_sum_cat,p_sum_cat,tld_sum_cat,mold=u_sum_cat)
   ALLOCATE(blht_each_cat(mgr,ngr,ncat))
   ALLOCATE(rif_blht_each_cat,ustar_each_cat,ice_snow_thick,mold=blht_each_cat)
+  blht_each_cat = -1.
 
   ALLOCATE(t_hPa(mgr,ngr,nplev))
   ALLOCATE(u_hPa,v_hPa,mold=t_hPa)
@@ -959,6 +969,7 @@ PROGRAM ABL
 ! call srfv_all%add_var("1/LO")
   call srfv_all%add_var("T0")
   call srfv_all%add_var("blht")
+  call srfv_all%add_var("blht_nudge")
   call srfv_all%add_var("blht_col1")
   if (ncat.gt.1) then
       call srfv_all%add_var("blht_col2")
@@ -1163,9 +1174,11 @@ PROGRAM ABL
 !$OMP& PRIVATE(u_sum_cat, v_sum_cat, t_sum_cat, q_sum_cat, qi_sum_cat, e_sum_cat, ep_sum_cat) &
 !$OMP& PRIVATE(uw_sum_cat, vw_sum_cat, km_sum_cat, kh_sum_cat, ustar_sum_cat, p_sum_cat) &
 !$OMP& PRIVATE(tld_sum_cat, blht_sum_cat, rif_blht_sum_cat) &
+!$OMP& PRIVATE(u_era_tile, v_era_tile, blht_raw) &
 !$OMP& PRIVATE(area_conc_ow, area_conc, slon, jd, ha, do_merge_columns) &
 !$OMP& FIRSTPRIVATE(time, merge_cnt, loaded_already)
 
+  allocate(u_era_tile(nj,ncat), v_era_tile(nj,ncat))
   tid = omp_get_thread_num()
 
   !$OMP CRITICAL
@@ -1564,6 +1577,8 @@ PROGRAM ABL
 
                 ! print *, "TRACK MAIN u:A ",u_each_cat(m,n,31,n_si)
 
+                ! Diagnostic safety: physics_vars holds shared column state.
+!$OMP CRITICAL(ABL_PHYSICS_STATE)
                 call Integrate_NeXtSIM_ABL( &
                   albedo(m,n,n_si),                                         & ! Internal or from coupler?
                   t_hPa(m,n,:), u_hPa(m,n,:), v_hPa(m,n,:),                 &
@@ -1593,9 +1608,11 @@ PROGRAM ABL
                   ni,                                                       &
                   dedzs(m,n,:,n_si),tsoil(m,n,:,n_si),zsoil(m,n,:,n_si),dzeta(m,n,n_si),         &    ! for "soil" temperatures
                   ct_ice(m,n,n_si), &
-                  do_si_coupling, nudge_level, nudge_above_bl, nudge_in_bl, nudge_grad, & 
+                  do_si_coupling, nudge_level, nudge_above_bl, nudge_in_bl, nudge_grad, &
+                  wind_tau_bl_hours, wind_transition_m, & 
                   gflux(m,n,n_si), lw_net(m,n,n_si), sw_net(m,n,n_si), h0(m,n,n_si), e0(m,n,n_si), &
-                  u_Pa_to_z(m,n,:), v_Pa_to_z(m,n,:))
+                  u_era_tile(:,n_si), v_era_tile(:,n_si))
+!$OMP END CRITICAL(ABL_PHYSICS_STATE)
              
                 ! Keep the derived total thickness synchronized with sit/snt.
                 ! In interactive SOILTDM mode these may have changed through melt.
@@ -1621,6 +1638,8 @@ PROGRAM ABL
             !inputs
             u_sum_cat(:) = 0
             v_sum_cat(:) = 0
+            u_Pa_to_z(m,n,:) = 0.
+            v_Pa_to_z(m,n,:) = 0.
             t_sum_cat(:) = 0
             q_sum_cat(:) = 0
             qi_sum_cat(:) = 0
@@ -1653,6 +1672,11 @@ PROGRAM ABL
               endif
               u_sum_cat = u_sum_cat + u_each_cat(m,n,:,n_si)*area_conc
               v_sum_cat = v_sum_cat + v_each_cat(m,n,:,n_si)*area_conc
+              ! Use identical tile weights for ERA5 comparison profiles.
+              u_Pa_to_z(m,n,:) = u_Pa_to_z(m,n,:) + &
+                                  area_conc*u_era_tile(:,n_si)
+              v_Pa_to_z(m,n,:) = v_Pa_to_z(m,n,:) + &
+                                  area_conc*v_era_tile(:,n_si)
               t_sum_cat = t_sum_cat + t_each_cat(m,n,:,n_si)*area_conc
               q_sum_cat = q_sum_cat + q_each_cat(m,n,:,n_si)*area_conc
               qi_sum_cat = qi_sum_cat + qi_each_cat(m,n,:,n_si)*area_conc
@@ -1674,7 +1698,29 @@ PROGRAM ABL
               ! blht_max(m,n) = MAX(blht_max(m,n), blht_each_cat(m,n,n_si))
             enddo
       
-            blht_max(m,n) = maxval(blht_each_cat(m,n,:))
+            ! Ignore inactive tiles and BL heights with no valid crossing.
+            blht_raw = -1.
+            if (do_tiling.eq.0) then
+              blht_raw = blht_each_cat(m,n,1)
+            elseif (any(sic(m,n,:).gt.1.e-8 .and. &
+                       blht_each_cat(m,n,:).gt.0.)) then
+              blht_raw = maxval(blht_each_cat(m,n,:), &
+                mask=(sic(m,n,:).gt.1.e-8 .and. &
+                      blht_each_cat(m,n,:).gt.0.))
+            endif
+            if (blht_raw.gt.0.) then
+              if (blht_max(m,n).gt.0.) then
+                ! Follow increasing BLH immediately; smooth decreases.
+                blht_max(m,n) = max(blht_raw, &
+                  blht_max(m,n) + &
+                  (1.-exp(-real(ds)/blht_decay_seconds))* &
+                  (blht_raw-blht_max(m,n)))
+              else
+                blht_max(m,n) = blht_raw
+              endif
+            else
+              blht_max(m,n) = -1.
+            endif
 
             ! now, add the new averaged arrays back to those to be carried
             ! forward
@@ -1727,6 +1773,7 @@ PROGRAM ABL
     !        call srfv_all%append_var("1/LO", wlo)
           call srfv_all%append_var("T0", t(:,:,1))
           call srfv_all%append_var("blht", blht)
+          call srfv_all%append_var("blht_nudge", blht_max)
           call srfv_all%append_var("blht_col1", blht_each_cat(:,:,1))
           if (ncat.gt.1) then
               call srfv_all%append_var("blht_col2", blht_each_cat(:,:,2))
@@ -1890,6 +1937,7 @@ PROGRAM ABL
 
     enddo
   enddo
+  deallocate(u_era_tile, v_era_tile)
 !$OMP END PARALLEL
 
   CONTAINS

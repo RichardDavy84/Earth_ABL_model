@@ -121,7 +121,7 @@ c      REAL*8 u_in,v_in
       INTEGER ds_in
 
       INTEGER nplev
-      INTEGER np,min_Loc,max_Loc,wind_fix_top
+      INTEGER np,min_Loc,max_Loc,wind_fix_top,j_bl,j_trans
       REAL min_zm,max_zm
       INTEGER jj_justbelow
       PARAMETER(nplev=12)
@@ -131,6 +131,7 @@ C      INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
       REAL height_hPa,nudge_above_bl,nudge_in_bl,ndiff
       REAL wind_tau_bl_hours,wind_transition_m,wind_alpha
+      REAL wind_trans_width
       INTEGER nudge_grad,ind_nudge_scale,points_above_bl,points_below_bl
       REAL nudge_scale(nudge_grad)
 c      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
@@ -445,11 +446,22 @@ CC            v(jj)=v_Pa_to_z(max_Loc)
 CC            t(jj)=t_Pa_to_z(max_Loc)
 CC       enddo
 
-c     Use the ERA5 wind as the solver top boundary only in the
-c     free atmosphere within ERA5's 1000-700 hPa vertical range.
+c     Use a transition of at least three model levels above BLH.
+c     This limits step-like forcing on a stretched vertical grid.
+      j_bl=1
+      do jj=1,nj
+         if (zm(jj).le.blht_nudge) j_bl=jj
+      enddo
+      j_trans=min(nj,j_bl+3)
+      wind_trans_width=max(wind_transition_m,
+     1                     max(0.,zm(j_trans)-blht_nudge))
+c     Dirichlet U,V at the top only if the top is inside ERA5's
+c     supplied 1000-700 hPa range and above the transition.
       wind_fix_top=0
       if (nudge_level.eq.0 .and. max_Loc.eq.nj) then
-         if (zm(nj).ge.blht_nudge+wind_transition_m) then
+         if ((p(nj)/100.).ge.700. .and.
+     1       (p(nj)/100.).le.1000. .and.
+     2       zm(nj).ge.blht_nudge+wind_trans_width) then
             wind_fix_top=1
          endif
       endif
@@ -625,7 +637,7 @@ c     The prescribed surface momentum boundary jj=1 is unchanged.
       if (nudge_level.eq.0) then
          do jj=2,nj
             wind_alpha=era5_wind_alpha(zm(jj),blht_nudge,
-     1        wind_transition_m,real(ds),
+     1        wind_trans_width,real(ds),
      2        wind_tau_bl_hours*3600.,p(jj)/100.)
             u(jj)=u(jj)+wind_alpha*(u_Pa_to_z(jj)-u(jj))
             v(jj)=v(jj)+wind_alpha*(v_Pa_to_z(jj)-v(jj))

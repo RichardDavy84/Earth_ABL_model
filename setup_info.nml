@@ -51,8 +51,8 @@
   use_d2m = 0,        ! this decides whether to use specific humidity directly from q2m, or to compute from d2m (formula from nextsim). ! Always set to 0 - function not working so now reads q2m after using build_q2m_from_d2m_slp.py
   nudge_q2m = 1,
   nudge_level = 0,
-  nudge_above_bl = 0.8, 
-  nudge_in_bl = 0.2, 
+  nudge_above_bl = 1.5, ! hours: 90 min above BL
+  nudge_in_bl = 5.0,    ! hours: 5 h within BL 
   nudge_grad = 3
   ! n_p_levels = 12,
   ! pressure_levels = 700., 750., 775., 800., 825., 850., 875., 900., 925., 950., 975., 1000.

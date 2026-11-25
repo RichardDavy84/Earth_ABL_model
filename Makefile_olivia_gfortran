@@ -41,7 +41,7 @@ LDFLAGS += -L${tmp_dir} -lnetcdff -lnetcdf -lncio # $(OBJ_DIR)
 # LDFLAGS += -ldatetime -lnetcdff -lnetcdf -lncio -lhdf5 -lhdf5_hl -I $(OBJ_DIR)
 
 # The source files for modules
-SRC = mod_io.f90 physics_vars.f90 Reinitialization_of_columns.f90
+SRC = mod_io.f90 physics_vars.f90 Reinitialization_of_columns.f90 wind_nudging.f90
 S77 = Initialization_module_NeXtSIM.for Command_module_for_NeXtSIM.for Physics.for Solver.for
 
 # Resulting object files
@@ -63,7 +63,7 @@ $(OBJ_DIR)/%.o: %.for
 # Extra module dependencies (because of USE statements) 
 $(OBJ_DIR)/Initialization_module_NeXtSIM.o: Initialization_module_NeXtSIM.for 
 $(OBJ_DIR)/physics_vars.o $(OBJ_DIR)/Physics.o: Physics.for $(OBJ_DIR)/physics_vars.o 
-$(OBJ_DIR)/Command_module_for_NeXtSIM.o: Command_module_for_NeXtSIM.for $(OBJ_DIR)/physics_vars.o 
+$(OBJ_DIR)/Command_module_for_NeXtSIM.o: Command_module_for_NeXtSIM.for $(OBJ_DIR)/physics_vars.o $(OBJ_DIR)/wind_nudging.o 
 	$(FC) $(FFLAGS) $(OMPFLAG) $(MODFLAG)$(OBJ_DIR) -c $< -o $@	
 
 # Main program 

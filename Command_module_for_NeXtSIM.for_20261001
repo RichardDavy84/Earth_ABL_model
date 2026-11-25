@@ -33,6 +33,7 @@ c     1    sic, sit, snt, sst, !HCRadd
      1    dedzs,tsoil,zsoil,dzeta,ct_ice,
      1    do_si_coupling, nudge_level, 
      1    nudge_above_bl,nudge_in_bl,nudge_grad,
+     1    wind_tau_bl_hours,wind_transition_m,
      1    gflux, lw_net, sw_net, h0, e0, u_Pa_to_z, v_Pa_to_z)
 
 c      SUBROUTINE Integrate_NeXtSIM_ABL(albedo,t700,u700,v700,t750,u750,
@@ -68,7 +69,8 @@ C     3 wqi0, wt0
       use physics_vars, only: ustar,pr,ztop,deta,
      1 betam, betah, gammam, gammah,alpha, betag, ds, fc, grav,
      2 rl0, vk, zero, qistar, qstar, tstar, uw0, vw0, wq0,
-     3 wqi0, wt0
+     3 wqi0, wt0, ug, vg, z0
+      use wind_nudging, only: era5_wind_alpha
 
       IMPLICIT none
       INTEGER nj,nv,nw,ir, ni
@@ -119,7 +121,7 @@ c      REAL*8 u_in,v_in
       INTEGER ds_in
 
       INTEGER nplev
-      INTEGER np,min_Loc,max_Loc !, nloc, Loc_non_zero
+      INTEGER np,min_Loc,max_Loc,wind_fix_top
       REAL min_zm,max_zm
       INTEGER jj_justbelow
       PARAMETER(nplev=12)
@@ -128,6 +130,7 @@ c      REAL*8 u_in,v_in
 C      INTEGER Locations(nplev)
       REAL zm_at_p(nplev)
       REAL height_hPa,nudge_above_bl,nudge_in_bl,ndiff
+      REAL wind_tau_bl_hours,wind_transition_m,wind_alpha
       INTEGER nudge_grad,ind_nudge_scale,points_above_bl,points_below_bl
       REAL nudge_scale(nudge_grad)
 c      REAL zfrc_top,zfrc_bot,zfrc,rif_frac
@@ -181,10 +184,12 @@ c---------Function used for calculating saturated specific humidity
 c===================Set constants
       p0=p(1)                        ! Surface pressure for dust component
 
-c      ug = u_in
-c      vg = v_in
+c     Refresh approximate geostrophic forcing for this grid cell.
+c     ERA5 850 hPa is input index 7. This remains a proxy.
+      ug = u_hPa(7)
+      vg = v_hPa(7)
       ustar = ustar_in
-      z0_in = z0_in
+      z0 = z0_in
       ds = ds_in
 c      ds_in = ds_in
 
@@ -203,6 +208,92 @@ c      ds_in = ds_in
       hoursec=daysec/nhrs
       fc=2.*angv*SIN(rlat*rpi)
 
+c---------Constants used in similarity functions
+        betam =5.0                   ! Others : 6.00      4.7      5.0
+        betah =5.0                   !          8.21      4.7      5.0
+        gammam=16.                   !          19.3      15.      16.
+        gammah=16.                   !          11.6      15.      16.
+        pr    =.85                   !          0.95      .85      1.0
+c===================Specify some constants associated with the closure
+
+        alpha=.3
+        betag=grav/t(1)
+        rifc=1./betam
+        rl0=100.           !300
+c        rl0=.00027*ug/fc
+
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c Define initial dust properties                                                                    !
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c      call dustzeds(nj,zm,zd,zmd,dzetad,z0,dlamb)            !Define zd,zmd for Dust calculations   !
+c      call dustrads(ir,rad)                                  !Define dust paricle sizes             !
+c      call dustscale(ir,rad,scaled)                          !Define dust scaling factor            !
+c      call initdist(ir,nj,scaled,zd,F1,rad)                  !Define initial distribution of dust   !
+c      call valcalc(ir,nj,taur,F1,zd,rad,value)               !Define val used in dust calculations  !
+c      call Opdepth(ir,nj,taur,F1,zd,zm,rad,tvis,tvisk,value) !Define initial optical depth profile  !
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c      do i=1,nj
+c         tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
+c      end do
+
+
+c---------Initialization array used in solving matrix
+      do l=1,nv
+      do j=1,nv
+      do i=1,nj
+        alfa(i,j,l)=zero
+      enddo
+      enddo
+      enddo
+
+      do l=1,nv
+      do i=1,nj
+        beta(i,l)=zero
+      enddo
+      enddo
+
+        !tg=theta(nj) commented out as doesn't seem to be used
+
+c---------Calculating Boundary-Layer Height
+c     If no stress crossing exists, carry an invalid BLH sentinel.
+              blht=-1.
+              ss05=.05*SQRT(uw(1)*uw(1)+vw(1)*vw(1))
+              ssz1=0.
+c              ss05=wt(1)
+            do j=2,nj-1
+                ssz2=.5*SQRT(uw(j)*uw(j)+vw(j)*vw(j))
+c                ssz2=wt(j)
+              IF( (ss05.le.ssz1).and.(ss05.ge.ssz2) ) THEN
+                blht=zt(j-1)+(zt(j)-zt(j-1))*(ss05-ssz1)/(ssz2-ssz1)
+                GOTO 201
+              ENDIF
+                ssz1=ssz2
+            enddo
+ 201    CONTINUE
+
+c---------Calculate celestial mechanics for the current solar day
+        ar=2*pi*(jd+311)/365          ! Model begins 9th November, Pielke 1984 p211
+        rd=1.000110+0.034221*COS(ar)+0.001280*SIN(ar)
+     1      +0.000719*COS(2.*ar)+0.000077*SIN(2.*ar)
+c	rd=3.03409791/2.+.046215*COS(ar)-.005188*COS(2.*ar)
+c     1                  +.134208*SIN(ar)+.004177*SIN(2.*ar)
+        ar=slon*rpi                             ! Areocentric longitude in radians
+        sdec=.3979486*SIN(ar)                   ! sin(sun decline angle)
+        cdec=SQRT(1.-sdec*sdec)                 ! cos(sun decline angle)
+        s0c=1373.*rd                            ! current solar flux at TOA
+        !  slon=slon+.986                       ! Areocentric longitude for next solar day
+        cc=cdec*COS(rlat*rpi)
+        ss=sdec*SIN(rlat*rpi)
+
+c---------Calculating surface fluxes using Monin-Obukhov similarity
+        ! ha=(1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
+          sh=cc*COS(ha)+ss                       ! Sin of solar height angle
+c==============Calculating hydrostatic pressure (mb)
+        do j=2,nj
+          p(j)=p(j-1)-p(j-1)/t(j)*grav/rgas*deta/dedzt(j-1)
+          turbhr(j)=t(j)                         !  Store T for output
+        enddo
+c     Refresh ERA5 interpolation using UPDATED hydrostatic p(z).
 c================== Nudge towards temperature and winds at 850 hPa
 c      nplev=12
 
@@ -303,10 +394,9 @@ c     minLoc and maxLoc accordingly
       endif
 
       if (blht_max.lt.0.) then
-          ! this means that the boundary layer height has not yet been
-          ! computed - so just set it really high so that all are
-          ! tightly nudged to ERA5 to begin with
-          blht_nudge = zm(12)
+          ! BLH missing: conservative fallback. Never prescribe an
+          ! exact ERA5 wind inside an undiagnosed boundary layer.
+          blht_nudge = zm(nj)
       else
           blht_nudge = blht_max
       endif
@@ -355,89 +445,14 @@ CC            v(jj)=v_Pa_to_z(max_Loc)
 CC            t(jj)=t_Pa_to_z(max_Loc)
 CC       enddo
 
-c---------Constants used in similarity functions
-        betam =5.0                   ! Others : 6.00      4.7      5.0
-        betah =5.0                   !          8.21      4.7      5.0
-        gammam=16.                   !          19.3      15.      16.
-        gammah=16.                   !          11.6      15.      16.
-        pr    =.85                   !          0.95      .85      1.0
-c===================Specify some constants associated with the closure
-
-        alpha=.3
-        betag=grav/t(1)
-        rifc=1./betam
-        rl0=100.           !300
-c        rl0=.00027*ug/fc
-
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c Define initial dust properties                                                                    !
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c      call dustzeds(nj,zm,zd,zmd,dzetad,z0,dlamb)            !Define zd,zmd for Dust calculations   !
-c      call dustrads(ir,rad)                                  !Define dust paricle sizes             !
-c      call dustscale(ir,rad,scaled)                          !Define dust scaling factor            !
-c      call initdist(ir,nj,scaled,zd,F1,rad)                  !Define initial distribution of dust   !
-c      call valcalc(ir,nj,taur,F1,zd,rad,value)               !Define val used in dust calculations  !
-c      call Opdepth(ir,nj,taur,F1,zd,zm,rad,tvis,tvisk,value) !Define initial optical depth profile  !
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c      do i=1,nj
-c         tvis(i)=taur*(EXP(0.-(zm(i)/8786)))
-c      end do
-
-
-c---------Initialization array used in solving matrix
-      do l=1,nv
-      do j=1,nv
-      do i=1,nj
-        alfa(i,j,l)=zero
-      enddo
-      enddo
-      enddo
-
-      do l=1,nv
-      do i=1,nj
-        beta(i,l)=zero
-      enddo
-      enddo
-
-        !tg=theta(nj) commented out as doesn't seem to be used
-
-c---------Calculating Boundary-Layer Height
-              ss05=.05*SQRT(uw(1)*uw(1)+vw(1)*vw(1))
-              ssz1=0.
-c              ss05=wt(1)
-            do j=2,nj-1
-                ssz2=.5*SQRT(uw(j)*uw(j)+vw(j)*vw(j))
-c                ssz2=wt(j)
-              IF( (ss05.le.ssz1).and.(ss05.ge.ssz2) ) THEN
-                blht=zt(j-1)+(zt(j)-zt(j-1))*(ss05-ssz1)/(ssz2-ssz1)
-                GOTO 201
-              ENDIF
-                ssz1=ssz2
-            enddo
- 201    CONTINUE
-
-c---------Calculate celestial mechanics for the current solar day
-        ar=2*pi*(jd+311)/365          ! Model begins 9th November, Pielke 1984 p211
-        rd=1.000110+0.034221*COS(ar)+0.001280*SIN(ar)
-     1      +0.000719*COS(2.*ar)+0.000077*SIN(2.*ar)
-c	rd=3.03409791/2.+.046215*COS(ar)-.005188*COS(2.*ar)
-c     1                  +.134208*SIN(ar)+.004177*SIN(2.*ar)
-        ar=slon*rpi                             ! Areocentric longitude in radians
-        sdec=.3979486*SIN(ar)                   ! sin(sun decline angle)
-        cdec=SQRT(1.-sdec*sdec)                 ! cos(sun decline angle)
-        s0c=1373.*rd                            ! current solar flux at TOA
-        !  slon=slon+.986                       ! Areocentric longitude for next solar day
-        cc=cdec*COS(rlat*rpi)
-        ss=sdec*SIN(rlat*rpi)
-
-c---------Calculating surface fluxes using Monin-Obukhov similarity
-        ! ha=(1.*jm/nmts+jh-1.)/24.*2.*pi-pi     ! Hour angle in radians
-          sh=cc*COS(ha)+ss                       ! Sin of solar height angle
-c==============Calculating hydrostatic pressure (mb)
-        do j=2,nj
-          p(j)=p(j-1)-p(j-1)/t(j)*grav/rgas*deta/dedzt(j-1)
-          turbhr(j)=t(j)                         !  Store T for output
-        enddo
+c     Use the ERA5 wind as the solver top boundary only in the
+c     free atmosphere within ERA5's 1000-700 hPa vertical range.
+      wind_fix_top=0
+      if (nudge_level.eq.0 .and. max_Loc.eq.nj) then
+         if (zm(nj).ge.blht_nudge+wind_transition_m) then
+            wind_fix_top=1
+         endif
+      endif
 c==============Calculating boundary layer dynamics
 c---------Converting temperature to potential temperature
         do j=1,nj
@@ -451,8 +466,9 @@ c        CALL subsrf(u,v,theta,q,qi,dedzt,zm,zt,e,ep,kh,km,rif,rlmo,tl,
 c     1              tld,uw,vw,wt,wq,wqi,rifc,wlo,nj,nw)
 c---------Calculating finite difference matrix and lu decomposition
 
-        CALL coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,theta,u,v,uw,vw,dedzm,
-     1           dedzt,kh,km,tld,wa,ipvt,nj,nv)
+        CALL coeffi(a,alfa,b,beta,c,d,e,ep,p,q,qi,theta,u,v,uw,vw,
+     1       dedzm,dedzt,kh,km,tld,wa,ipvt,nj,nv,wind_fix_top,
+     2       u_Pa_to_z(nj),v_Pa_to_z(nj))
 
 c---------Solving tridiagonal equations
 c             psi(j,1) = u (j) mean velocity                           *
@@ -528,6 +544,8 @@ c         NEED TO DO SIMILAR WITH Sw AT SOME POINT
           gflux=lw_net+sw_net-h0-e0                  ! net surface energy flux
 
 c---------Calculating Boundary-Layer Height
+c     If no stress crossing exists, carry an invalid BLH sentinel.
+              blht=-1.
               ss05=.05*SQRT(uw(1)*uw(1)+vw(1)*vw(1))
               ssz1=0.
 c              ss05=wt(1)
@@ -597,11 +615,28 @@ c              print *, "Tsurf af ",Tsurf_tmp
         endif
 
 CCCC MOVED FROM ABOVE, 20261002 HCR
+c     Preserve temperature nudging independently of the wind scheme.
       do jj=min_Loc,max_Loc
-         t(jj) = t(jj) +nudge_fac(jj)*(t_Pa_to_z(jj)-t(jj)) ! Nudge towards ERA5 temperature data
-         u(jj) = u(jj) +nudge_fac(jj)*(u_Pa_to_z(jj)-u(jj)) ! Nudge towards ERA5 U_850 data
-         v(jj) = v(jj) +nudge_fac(jj)*(v_Pa_to_z(jj)-v(jj)) ! Nudge towards ERA5 V_850 data
+         t(jj)=t(jj)+nudge_fac(jj)*(t_Pa_to_z(jj)-t(jj))
       enddo
+c     Wind: weak within the highest active BL, smooth cubic
+c     transition above it, and exact ERA5 matching higher up.
+c     The prescribed surface momentum boundary jj=1 is unchanged.
+      if (nudge_level.eq.0) then
+         do jj=2,nj
+            wind_alpha=era5_wind_alpha(zm(jj),blht_nudge,
+     1        wind_transition_m,real(ds),
+     2        wind_tau_bl_hours*3600.,p(jj)/100.)
+            u(jj)=u(jj)+wind_alpha*(u_Pa_to_z(jj)-u(jj))
+            v(jj)=v(jj)+wind_alpha*(v_Pa_to_z(jj)-v(jj))
+         enddo
+      else
+c        Preserve single-level nudging diagnostic functionality.
+         do jj=min_Loc,max_Loc
+            u(jj)=u(jj)+nudge_fac(jj)*(u_Pa_to_z(jj)-u(jj))
+            v(jj)=v(jj)+nudge_fac(jj)*(v_Pa_to_z(jj)-v(jj))
+         enddo
+      endif
        ! Finally, for any z values above ERA5 inputs, set u and v to be
        ! the last ERA5 values
 c       do jj=max_Loc+1,nj
